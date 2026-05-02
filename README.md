@@ -19,28 +19,6 @@ HTTP Client: Axios for ML API calls
 Middleware: CORS, dotenv
 Development: Nodemon for hot reloading
 
-Project Structure
-
-backend-node/
-│
-├── server.js                 # Main Express server
-├── routes/
-│   └── data.js              # API route definitions
-├── controllers/
-│   └── dataController.js    # Request handlers and business logic
-├── models/
-│   └── Health.js            # MongoDB schema for health data
-├── services/
-│   └── mlService.js         # ML API integration service
-├── config/
-│   └── db.js                # Database connection configuration
-├── .env                     # Environment variables
-├── .env.example             # Environment template
-├── package.json             # Dependencies and scripts
-└── README.md                # This file
-
-mobile-app/                  # React Native mobile application
-
 Installation
 
 Clone the repository:
