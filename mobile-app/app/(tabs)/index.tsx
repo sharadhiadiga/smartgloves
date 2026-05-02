@@ -2,22 +2,32 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 
 interface HealthData {
-  temperature: number | null;
-  heartRate: number | null;
-  spo2: number | null;
-  gsr: number | null;
-  status: string;
+  temperature?: number | null;
+  heartRate?: number | null;
+  spo2?: number | null;
+  gsr?: number | null;
+  status?: string;
   timestamp?: string;
 }
 
+const initialHealthData: HealthData = {
+  temperature: null,
+  heartRate: null,
+  spo2: null,
+  gsr: null,
+  status: 'Waiting...',
+  timestamp: undefined,
+};
+
 export default function HomeScreen() {
-  const [data, setData] = useState<HealthData | null>(null);
+  const [data, setData] = useState<HealthData>(initialHealthData);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
       console.log('[FETCH] Attempting to fetch from http://10.60.196.201:5000/api/latest');
+
       const response = await fetch('http://10.60.196.201:5000/api/latest', {
         method: 'GET',
         headers: {
@@ -28,69 +38,36 @@ export default function HomeScreen() {
       console.log('[FETCH] Response received, status:', response.status);
 
       const result = await response.json();
-      console.log('[FETCH] Raw API response:', JSON.stringify(result, null, 2));
+      console.log('DATA RECEIVED:', result);
 
-      // Handle API response wrapper structure
-      let healthData: HealthData | null = null;
+      const payload = result?.success === true && result?.data ? result.data : result ?? {};
+      const nextData: HealthData = {
+        ...initialHealthData,
+        ...payload,
+        status: payload?.status ?? 'Waiting...',
+      };
 
-      if (result && result.success === true && result.data) {
-        console.log('[PARSE] Using result.data structure');
-        healthData = {
-          temperature: result.data.temperature ?? null,
-          heartRate: result.data.heartRate ?? null,
-          spo2: result.data.spo2 ?? null,
-          gsr: result.data.gsr ?? null,
-          status: result.data.status ?? 'Unknown',
-          timestamp: result.data.timestamp,
-        };
-      } else if (result && result.temperature !== undefined) {
-        console.log('[PARSE] Using direct result structure');
-        healthData = {
-          temperature: result.temperature ?? null,
-          heartRate: result.heartRate ?? null,
-          spo2: result.spo2 ?? null,
-          gsr: result.gsr ?? null,
-          status: result.status ?? 'Unknown',
-          timestamp: result.timestamp,
-        };
-      }
-
-      console.log('[PARSE] Extracted health data:', JSON.stringify(healthData, null, 2));
-
-      if (healthData) {
-        setData(healthData);
-        setError(null);
-        console.log('[STATE] Data successfully set to state');
-      } else {
-        setData(null);
-        setError('No valid health data received');
-        console.log('[STATE] No valid data structure found');
-      }
-
-      setLoading(false);
+      setData({ ...nextData });
+      setError(null);
     } catch (err: any) {
-      console.error('[ERROR] Fetch error:', err.message);
-      setError(err.message || 'Failed to fetch data');
+      console.error('[ERROR] Fetch error:', err?.message ?? err);
+      setError(err?.message || 'Failed to fetch data');
+    } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    console.log('[LIFECYCLE] Component mounted, starting initial fetch');
     fetchData();
 
     const interval = setInterval(() => {
-      console.log('[LIFECYCLE] 2-second interval triggered, fetching fresh data');
       fetchData();
     }, 2000);
 
-    return () => {
-      console.log('[LIFECYCLE] Component unmounted, clearing interval');
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, []);
 
-  const getStatusColor = (status: string | null): string => {
+  const getStatusColor = (status?: string | null): string => {
     if (!status) return '#e2e8f0';
     switch (status.toLowerCase()) {
       case 'normal':
@@ -115,51 +92,45 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Health Monitor</Text>
 
-      {loading && !data && (
+      {loading && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#60a5fa" />
           <Text style={styles.loadingText}>Loading health data...</Text>
         </View>
       )}
 
-      {error && (
+      {error ? (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>⚠️ {error}</Text>
         </View>
-      )}
+      ) : null}
 
-      {data && (
-        <View style={styles.dataContainer}>
-          <Text style={styles.value}>
-            🌡 Temperature: <Text style={styles.valueHighlight}>{safeRender(data.temperature)}°C</Text>
-          </Text>
+      <View style={styles.dataContainer}>
+        <Text style={styles.value}>
+          🌡 Temperature: <Text style={styles.valueHighlight}>{safeRender(data?.temperature)}°C</Text>
+        </Text>
 
-          <Text style={styles.value}>
-            ❤️ Heart Rate: <Text style={styles.valueHighlight}>{safeRender(data.heartRate)} bpm</Text>
-          </Text>
+        <Text style={styles.value}>
+          ❤️ Heart Rate: <Text style={styles.valueHighlight}>{safeRender(data?.heartRate)} bpm</Text>
+        </Text>
 
-          <Text style={styles.value}>
-            🫁 SpO₂: <Text style={styles.valueHighlight}>{safeRender(data.spo2)}%</Text>
-          </Text>
+        <Text style={styles.value}>
+          🫁 SpO₂: <Text style={styles.valueHighlight}>{safeRender(data?.spo2)}%</Text>
+        </Text>
 
-          <Text style={styles.value}>
-            🧠 GSR: <Text style={styles.valueHighlight}>{safeRender(data.gsr)} µS</Text>
-          </Text>
+        <Text style={styles.value}>
+          🧠 GSR: <Text style={styles.valueHighlight}>{safeRender(data?.gsr)} µS</Text>
+        </Text>
 
-          <Text style={[styles.status, { color: getStatusColor(data.status) }]}>
-            Status: {data.status}
-          </Text>
+        <Text style={[styles.status, { color: getStatusColor(data?.status) }]}>Status: {data?.status ?? 'Waiting...'}</Text>
 
-          {data.timestamp && (
-            <Text style={styles.timestamp}>
-              Last updated: {new Date(data.timestamp).toLocaleTimeString()}
-            </Text>
-          )}
-        </View>
-      )}
+        <Text style={styles.timestamp}>
+          Last updated: {data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '--'}
+        </Text>
+      </View>
 
       <Text style={styles.debugInfo}>
-        {loading ? 'Loading...' : data ? 'Connected' : 'Waiting for connection'}
+        {loading ? 'Refreshing every 2 seconds...' : error ? 'Offline' : 'Connected'}
       </Text>
     </View>
   );
@@ -183,6 +154,7 @@ const styles = StyleSheet.create({
   loadingContainer: {
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 20,
   },
   loadingText: {
     fontSize: 16,
@@ -190,6 +162,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   errorContainer: {
+    width: '100%',
     backgroundColor: '#7f1d1d',
     borderLeftWidth: 4,
     borderLeftColor: '#ef4444',
@@ -240,7 +213,7 @@ const styles = StyleSheet.create({
   },
   debugInfo: {
     fontSize: 12,
-    color: '#475569',
+    color: '#94a3b8',
     marginTop: 20,
   },
 });
