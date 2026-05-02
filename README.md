@@ -14,9 +14,13 @@ Environment Configuration: Supports environment variables for flexible deploymen
 Tech Stack
 
 Backend: Node.js, Express.js
+
 Database: MongoDB with Mongoose ODM
+
 HTTP Client: Axios for ML API calls
+
 Middleware: CORS, dotenv
+
 Development: Nodemon for hot reloading
 
 Installation
