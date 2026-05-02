@@ -1,102 +1,110 @@
 from flask import Flask, request, jsonify
+import joblib
 import pandas as pd
-from sklearn.tree import DecisionTreeClassifier
 
 app = Flask(__name__)
 
-DATA_PATH = "data/dataset.csv"
-
-model = None
+# -----------------------------
+# LOAD TRAINED MODEL
+# -----------------------------
+model = joblib.load("model.pkl")
 
 
 # -----------------------------
-# TRAIN MODEL (ONLY WHEN CALLED)
+# DYNAMIC ANALYSIS ENGINE
 # -----------------------------
-def train_model():
-    global model
+def analyze_conditions(temp, hr, spo2, gsr):
 
-    df = pd.read_csv(DATA_PATH)
+    issues = []
+    measures = []
 
-    # safety checks
-    if df.empty:
-        raise Exception("Dataset is empty")
+    # -------------------------
+    # TEMPERATURE
+    # -------------------------
+    if temp > 39:
+        issues.append("Critical high body temperature")
+        measures.append("Seek immediate medical attention")
+    elif temp > 38:
+        issues.append("High body temperature (fever)")
+        measures.append("Stay hydrated and rest")
+    elif temp < 35.5:
+        issues.append("Low body temperature")
+        measures.append("Keep warm and monitor")
 
-    required_cols = ["temp", "hr", "spo2", "gsr", "label"]
-    if not all(col in df.columns for col in required_cols):
-        raise Exception("Dataset format invalid")
+    # -------------------------
+    # HEART RATE
+    # -------------------------
+    if hr > 120:
+        issues.append("Very high heart rate")
+        measures.append("Avoid physical activity and consult a doctor")
+    elif hr > 100:
+        issues.append("Elevated heart rate")
+        measures.append("Relax and reduce stress")
 
-    X = df[["temp", "hr", "spo2", "gsr"]]
-    y = df["label"]
+    # -------------------------
+    # SPO2
+    # -------------------------
+    if spo2 < 90:
+        issues.append("Critically low oxygen level")
+        measures.append("Seek oxygen support immediately")
+    elif spo2 < 95:
+        issues.append("Low oxygen level")
+        measures.append("Practice deep breathing")
 
-    model = DecisionTreeClassifier(max_depth=4)
-    model.fit(X, y)
+    # -------------------------
+    # GSR (STRESS)
+    # -------------------------
+    if gsr > 2600:
+        issues.append("Extreme stress level")
+        measures.append("Immediate calming or intervention required")
+    elif gsr > 2000:
+        issues.append("High stress level")
+        measures.append("Try meditation or breathing exercises")
+    elif gsr > 1400:
+        issues.append("Moderate stress level")
+        measures.append("Take rest and relax")
 
-    print("✅ Model trained from dataset.csv")
+    # -------------------------
+    # NORMAL CASE
+    # -------------------------
+    if not issues:
+        issues.append("All parameters normal")
+        measures.append("Continue monitoring")
 
-
-# -----------------------------
-# OUTPUT MAPPING
-# -----------------------------
-def map_output(pred):
-    mapping = {
-        "Normal": {
-            "class": "Normal",
-            "stress": 10,
-            "level": "Low",
-            "description": "All vital parameters are within normal range.",
-            "measures": ["Continue monitoring"]
-        },
-        "Moderate": {
-            "class": "Moderate",
-            "stress": 40,
-            "level": "Moderate",
-            "description": "Low body temperature and moderate stress.",
-            "measures": [
-                "Keep warm",
-                "Consult doctor if persistent",
-                "Practice relaxation"
-            ]
-        },
-        "High": {
-            "class": "High",
-            "stress": 75,
-            "level": "High",
-            "description": "Fever, high heart rate, low SpO2, and high stress.",
-            "measures": [
-                "Hydrate",
-                "Deep breathing",
-                "Seek medical advice"
-            ]
-        },
-        "Critical": {
-            "class": "Critical",
-            "stress": 85,
-            "level": "High",
-            "description": "Critical condition detected.",
-            "measures": [
-                "Immediate medical attention required"
-            ]
-        }
-    }
-
-    return mapping.get(pred, {"error": "Unknown class"})
+    return issues, measures
 
 
 # -----------------------------
-# PREDICT API
+# OPTIONAL SAFETY OVERRIDE
+# -----------------------------
+def safety_override(temp, hr, spo2, pred):
+    if spo2 < 90 or hr > 130 or temp > 39.5:
+        return "Critical"
+    if spo2 < 92 or hr > 110 or temp > 38.5:
+        return "High"
+    return pred
+
+
+# -----------------------------
+# OPTIONAL AI PLACEHOLDER
+# -----------------------------
+def generate_ai_summary(issues):
+    return "Patient shows: " + ", ".join(issues)
+
+
+# -----------------------------
+# PREDICTION API
 # -----------------------------
 @app.route('/predict', methods=['POST'])
 def predict():
 
-    global model
-
-    # ❗ ensure model exists
-    if model is None:
-        return jsonify({"error": "Model not trained yet"}), 500
-
     data = request.json
 
+    # -----------------------------
+    # INPUT VALIDATION
+    # -----------------------------
     required = ["temperature", "heartRate", "spo2", "gsr"]
+
     if not all(k in data for k in required):
         return jsonify({"error": "Missing fields"}), 400
 
@@ -105,7 +113,7 @@ def predict():
     spo2 = data["spo2"]
     gsr = data["gsr"]
 
-    # validation
+    # Basic sanity checks
     if not (30 <= temp <= 45):
         return jsonify({"error": "Invalid temperature"}), 400
 
@@ -115,30 +123,44 @@ def predict():
     if not (70 <= spo2 <= 100):
         return jsonify({"error": "Invalid SpO2"}), 400
 
-    if gsr > 3000:
+    if gsr > 4000:
         return jsonify({"error": "Sensor not worn properly"}), 400
 
-    # prediction
-    pred = model.predict([[temp, hr, spo2, gsr]])[0]
+    # -----------------------------
+    # ML PREDICTION
+    # -----------------------------
+    sample = pd.DataFrame(
+        [[temp, hr, spo2, gsr]],
+        columns=["temp", "hr", "spo2", "gsr"]
+    )
 
-    return jsonify(map_output(pred))
+    pred = model.predict(sample)[0]
+
+    # Apply safety override
+    pred = safety_override(temp, hr, spo2, pred)
+
+    # -----------------------------
+    # DYNAMIC ANALYSIS
+    # -----------------------------
+    issues, measures = analyze_conditions(temp, hr, spo2, gsr)
+
+    # -----------------------------
+    # FINAL RESPONSE
+    # -----------------------------
+    response = {
+        "class": pred,
+        "stress": int((gsr / 3000) * 100),
+        "level": pred,
+        "issues": issues,
+        "measures": measures,
+        "summary": generate_ai_summary(issues)  # optional
+    }
+
+    return jsonify(response)
 
 
 # -----------------------------
-# RETRAIN API (ONLY WHEN NEEDED)
-# -----------------------------
-@app.route('/retrain', methods=['POST'])
-def retrain():
-    try:
-        train_model()
-        return jsonify({"message": "Model retrained successfully"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-# -----------------------------
-# SERVER START
+# RUN SERVER
 # -----------------------------
 if __name__ == '__main__':
-    train_model()   # 🔥 train once at startup
-    app.run(port=5001)
+    app.run(port=5001, debug=True)
