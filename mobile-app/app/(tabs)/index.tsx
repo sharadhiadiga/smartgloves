@@ -1,98 +1,246 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+interface HealthData {
+  temperature: number | null;
+  heartRate: number | null;
+  spo2: number | null;
+  gsr: number | null;
+  status: string;
+  timestamp?: string;
+}
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [data, setData] = useState<HealthData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const fetchData = async () => {
+    try {
+      console.log('[FETCH] Attempting to fetch from http://10.60.196.201:5000/api/latest');
+      const response = await fetch('http://10.60.196.201:5000/api/latest', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('[FETCH] Response received, status:', response.status);
+
+      const result = await response.json();
+      console.log('[FETCH] Raw API response:', JSON.stringify(result, null, 2));
+
+      // Handle API response wrapper structure
+      let healthData: HealthData | null = null;
+
+      if (result && result.success === true && result.data) {
+        console.log('[PARSE] Using result.data structure');
+        healthData = {
+          temperature: result.data.temperature ?? null,
+          heartRate: result.data.heartRate ?? null,
+          spo2: result.data.spo2 ?? null,
+          gsr: result.data.gsr ?? null,
+          status: result.data.status ?? 'Unknown',
+          timestamp: result.data.timestamp,
+        };
+      } else if (result && result.temperature !== undefined) {
+        console.log('[PARSE] Using direct result structure');
+        healthData = {
+          temperature: result.temperature ?? null,
+          heartRate: result.heartRate ?? null,
+          spo2: result.spo2 ?? null,
+          gsr: result.gsr ?? null,
+          status: result.status ?? 'Unknown',
+          timestamp: result.timestamp,
+        };
+      }
+
+      console.log('[PARSE] Extracted health data:', JSON.stringify(healthData, null, 2));
+
+      if (healthData) {
+        setData(healthData);
+        setError(null);
+        console.log('[STATE] Data successfully set to state');
+      } else {
+        setData(null);
+        setError('No valid health data received');
+        console.log('[STATE] No valid data structure found');
+      }
+
+      setLoading(false);
+    } catch (err: any) {
+      console.error('[ERROR] Fetch error:', err.message);
+      setError(err.message || 'Failed to fetch data');
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    console.log('[LIFECYCLE] Component mounted, starting initial fetch');
+    fetchData();
+
+    const interval = setInterval(() => {
+      console.log('[LIFECYCLE] 2-second interval triggered, fetching fresh data');
+      fetchData();
+    }, 2000);
+
+    return () => {
+      console.log('[LIFECYCLE] Component unmounted, clearing interval');
+      clearInterval(interval);
+    };
+  }, []);
+
+  const getStatusColor = (status: string | null): string => {
+    if (!status) return '#e2e8f0';
+    switch (status.toLowerCase()) {
+      case 'normal':
+        return '#22c55e';
+      case 'high stress':
+        return '#f59e0b';
+      case 'abnormal':
+        return '#ef4444';
+      default:
+        return '#e2e8f0';
+    }
+  };
+
+  const safeRender = (value: number | null | undefined, defaultText: string = '--'): string => {
+    if (value === null || value === undefined || Number.isNaN(value)) {
+      return defaultText;
+    }
+    return String(value);
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Health Monitor</Text>
+
+      {loading && !data && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#60a5fa" />
+          <Text style={styles.loadingText}>Loading health data...</Text>
+        </View>
+      )}
+
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>⚠️ {error}</Text>
+        </View>
+      )}
+
+      {data && (
+        <View style={styles.dataContainer}>
+          <Text style={styles.value}>
+            🌡 Temperature: <Text style={styles.valueHighlight}>{safeRender(data.temperature)}°C</Text>
+          </Text>
+
+          <Text style={styles.value}>
+            ❤️ Heart Rate: <Text style={styles.valueHighlight}>{safeRender(data.heartRate)} bpm</Text>
+          </Text>
+
+          <Text style={styles.value}>
+            🫁 SpO₂: <Text style={styles.valueHighlight}>{safeRender(data.spo2)}%</Text>
+          </Text>
+
+          <Text style={styles.value}>
+            🧠 GSR: <Text style={styles.valueHighlight}>{safeRender(data.gsr)} µS</Text>
+          </Text>
+
+          <Text style={[styles.status, { color: getStatusColor(data.status) }]}>
+            Status: {data.status}
+          </Text>
+
+          {data.timestamp && (
+            <Text style={styles.timestamp}>
+              Last updated: {new Date(data.timestamp).toLocaleTimeString()}
+            </Text>
+          )}
+        </View>
+      )}
+
+      <Text style={styles.debugInfo}>
+        {loading ? 'Loading...' : data ? 'Connected' : 'Waiting for connection'}
+      </Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  title: {
+    fontSize: 32,
+    color: '#ffffff',
+    marginBottom: 30,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#94a3b8',
+    marginTop: 12,
+  },
+  errorContainer: {
+    backgroundColor: '#7f1d1d',
+    borderLeftWidth: 4,
+    borderLeftColor: '#ef4444',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    marginBottom: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#fca5a5',
+  },
+  dataContainer: {
+    width: '100%',
+    backgroundColor: '#1e293b',
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderTopWidth: 2,
+    borderTopColor: '#3b82f6',
+  },
+  value: {
+    fontSize: 18,
+    color: '#cbd5e1',
+    marginVertical: 10,
+    fontWeight: '500',
+  },
+  valueHighlight: {
+    fontSize: 20,
+    color: '#60a5fa',
+    fontWeight: '700',
+  },
+  status: {
+    fontSize: 24,
+    marginTop: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  timestamp: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 16,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  debugInfo: {
+    fontSize: 12,
+    color: '#475569',
+    marginTop: 20,
   },
 });
