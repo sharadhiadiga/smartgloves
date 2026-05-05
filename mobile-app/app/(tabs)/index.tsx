@@ -7,7 +7,12 @@ interface HealthData {
   spo2?: number | null;
   gsr?: number | null;
   status?: string;
+  level?: string;
   timestamp?: string;
+  stress?: number | null;
+  issues?: string[];
+  measures?: string[];
+  recommendation?: string | null;
 }
 
 const initialHealthData: HealthData = {
@@ -16,7 +21,12 @@ const initialHealthData: HealthData = {
   spo2: null,
   gsr: null,
   status: 'Waiting...',
+  level: 'Unknown',
   timestamp: undefined,
+  stress: null,
+  issues: [],
+  measures: [],
+  recommendation: null,
 };
 
 export default function HomeScreen() {
@@ -24,34 +34,69 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    try {
-      console.log('[FETCH] Attempting to fetch from http://10.60.196.201:5000/api/latest');
+  const API_URL = 'http://10.19.151.233:5001/predict';
 
-      const response = await fetch('http://10.60.196.201:5000/api/latest', {
-        method: 'GET',
+  const fetchData = async () => {
+    setLoading(true);
+    const startTime = Date.now();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const requestBody = {
+        temperature: data.temperature ?? 36.8,
+        heartRate: data.heartRate ?? 75,
+        spo2: data.spo2 ?? 98,
+        gsr: data.gsr ?? 1200,
+      };
+
+      console.log('[FETCH] Attempting to fetch from', API_URL, requestBody);
+
+      const response = await fetch(API_URL, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
 
-      console.log('[FETCH] Response received, status:', response.status);
+      clearTimeout(timeoutId);
+      const responseTime = Date.now() - startTime;
+      console.log('[FETCH] Response received, status:', response.status, 'in', responseTime, 'ms');
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[FETCH] Backend error:', response.status, errorText);
+        throw new Error(`API error ${response.status}: ${errorText}`);
+      }
 
       const result = await response.json();
       console.log('DATA RECEIVED:', result);
 
-      const payload = result?.success === true && result?.data ? result.data : result ?? {};
       const nextData: HealthData = {
         ...initialHealthData,
-        ...payload,
-        status: payload?.status ?? 'Waiting...',
+        ...data,
+        ...requestBody,
+        stress: result?.stress ?? null,
+        issues: result?.issues ?? [],
+        measures: result?.measures ?? [],
+        status: result?.condition ?? data.status ?? 'Waiting...',
+        level: result?.level ?? result?.condition ?? data.level ?? 'Unknown',
+        recommendation: result?.recommendation ?? null,
       };
 
       setData({ ...nextData });
       setError(null);
     } catch (err: any) {
-      console.error('[ERROR] Fetch error:', err?.message ?? err);
-      setError(err?.message || 'Failed to fetch data');
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        console.error('[ERROR] Fetch timeout after 10 seconds');
+        setError('Request timed out');
+      } else {
+        console.error('[ERROR] Fetch error:', err?.message ?? err);
+        setError(err?.message || 'Failed to fetch data');
+      }
     } finally {
       setLoading(false);
     }
@@ -62,7 +107,7 @@ export default function HomeScreen() {
 
     const interval = setInterval(() => {
       fetchData();
-    }, 2000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);
@@ -124,13 +169,43 @@ export default function HomeScreen() {
 
         <Text style={[styles.status, { color: getStatusColor(data?.status) }]}>Status: {data?.status ?? 'Waiting...'}</Text>
 
+        <Text style={styles.value}>
+          � Level: <Text style={styles.valueHighlight}>{data?.level ?? 'Unknown'}</Text>
+        </Text>
+
+        <Text style={styles.value}>
+          �📈 Stress level: <Text style={styles.valueHighlight}>{safeRender(data?.stress)}%</Text>
+        </Text>
+
+        <Text style={styles.subHeader}>Issues</Text>
+        {data?.issues && data.issues.length > 0 ? (
+          data.issues.map((issue, index) => (
+            <Text key={`issue-${index}`} style={styles.listItem}>
+              • {issue}
+            </Text>
+          ))
+        ) : (
+          <Text style={styles.listItem}>No issues reported.</Text>
+        )}
+
+        <Text style={styles.subHeader}>Measures</Text>
+        {data?.measures && data.measures.length > 0 ? (
+          data.measures.map((measure, index) => (
+            <Text key={`measure-${index}`} style={styles.listItem}>
+              • {measure}
+            </Text>
+          ))
+        ) : (
+          <Text style={styles.listItem}>No measures available.</Text>
+        )}
+
         <Text style={styles.timestamp}>
           Last updated: {data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '--'}
         </Text>
       </View>
 
       <Text style={styles.debugInfo}>
-        {loading ? 'Refreshing every 2 seconds...' : error ? 'Offline' : 'Connected'}
+        {loading ? 'Refreshing every 5 seconds...' : error ? 'Offline' : 'Connected'}
       </Text>
     </View>
   );
@@ -203,6 +278,18 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  subHeader: {
+    fontSize: 16,
+    color: '#cbd5e1',
+    marginTop: 14,
+    fontWeight: '700',
+  },
+  listItem: {
+    fontSize: 14,
+    color: '#cbd5e1',
+    marginLeft: 6,
+    marginTop: 6,
   },
   timestamp: {
     fontSize: 12,
