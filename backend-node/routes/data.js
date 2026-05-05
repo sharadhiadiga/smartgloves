@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const SmartGlove = require('../models/SmartGlove');
 
 let history = [];
 
@@ -18,9 +19,9 @@ function analyzeStatus({ heartRate, spo2 }) {
 }
 
 // POST /api/data
-router.post('/data', (req, res) => {
+router.post('/data', async (req, res) => {
   try {
-    const { temperature, heartRate, spo2, gsr } = req.body;
+    const { temperature, heartRate, spo2, gsr, deviceId } = req.body;
 
     const status = analyzeStatus({ heartRate, spo2 });
 
@@ -30,29 +31,60 @@ router.post('/data', (req, res) => {
       spo2,
       gsr,
       status,
+      deviceId,
       timestamp: new Date(),
     };
 
-    history.push(result);
+    const savedEntry = await SmartGlove.create(result);
+    history.push(savedEntry);
 
-    res.json(result);
+    res.json(savedEntry);
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('[DATA POST ERROR]', error);
+
+    const fallbackEntry = {
+      ...req.body,
+      status: analyzeStatus(req.body),
+      timestamp: new Date(),
+    };
+
+    history.push(fallbackEntry);
+    res.status(500).json({
+      error: 'Unable to save to MongoDB, data stored in memory fallback',
+      fallback: fallbackEntry,
+    });
   }
 });
 
 // GET /api/latest
-router.get('/latest', (req, res) => {
-  if (history.length === 0) {
-    return res.json({ message: 'No data yet' });
-  }
+router.get('/latest', async (req, res) => {
+  try {
+    const latest = await SmartGlove.findOne().sort({ timestamp: -1 }).lean();
+    if (!latest) {
+      return res.json({ message: 'No data yet' });
+    }
 
-  res.json(history[history.length - 1]);
+    res.json(latest);
+  } catch (error) {
+    console.error('[DATA LATEST ERROR]', error);
+
+    if (history.length === 0) {
+      return res.status(500).json({ error: 'Unable to retrieve latest entry' });
+    }
+
+    res.json(history[history.length - 1]);
+  }
 });
 
 // GET /api/history
-router.get('/history', (req, res) => {
-  res.json(history.slice(-50));
+router.get('/history', async (req, res) => {
+  try {
+    const records = await SmartGlove.find().sort({ timestamp: -1 }).limit(50).lean();
+    res.json(records);
+  } catch (error) {
+    console.error('[DATA HISTORY ERROR]', error);
+    res.json(history.slice(-50));
+  }
 });
 
 module.exports = router;

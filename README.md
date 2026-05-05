@@ -8,6 +8,16 @@ SmartGloves is a comprehensive smart wearable health monitoring system that inte
 - **ml-model/**: Python-based machine learning service using Flask, scikit-learn, and pandas for health data analysis and predictions.
 - **mobile-app/**: React Native mobile application built with Expo, featuring TypeScript support and modern UI components.
 
+## Prerequisites
+
+Before running the project, ensure you have the following installed:
+
+- **Node.js** (>= 18.0.0)
+- **Python** (>= 3.8)
+- **MongoDB** (local or cloud instance)
+- **Expo CLI** (for mobile app development)
+- **Git** (for cloning the repository)
+
 ## Installation and Setup
 
 ### 1. Clone the Repository
@@ -98,6 +108,92 @@ This will open the Expo Developer Tools. You can then run the app on:
 - **Expo Go App**: Scan the QR code with the Expo Go app on your phone
 - **Web**: Press `w` in the terminal
 
+## API Endpoints
+
+The backend provides the following main endpoints:
+
+- `GET /api/health`: Check server health
+- `POST /api/data`: Submit health data
+- `GET /api/data`: Retrieve processed health data
+- `POST /api/predict`: Get ML predictions
+
+Refer to the backend routes for detailed API documentation.
+
+## Database
+
+The system uses MongoDB to store health data. Ensure MongoDB is running locally or update the `MONGODB_URI` in the `.env` file for a cloud instance.
+
+## Machine Learning
+
+The ML model handles:
+
+- Data preprocessing
+- Health anomaly detection
+- Predictive analytics for health trends
+
+The model is served via a Flask API and can be trained using the provided scripts in the `ml-model` directory.
+
+## Development
+
+### Backend Development
+
+- Use `npm run dev` for hot reloading during development.
+- API routes are defined in `routes/`.
+- Controllers handle business logic in `controllers/`.
+- Models define data schemas in `models/`.
+
+### ML Model Development
+
+- Training scripts are in `train.py`.
+- Dataset creation in `create-dataset.py`.
+- The main Flask app is in `app.py`.
+
+### Mobile App Development
+
+- The app uses Expo Router for file-based routing.
+- Components are in `components/`.
+- Screens are in `app/(tabs)/`.
+- Theme and constants in `constants/`.
+
+## Testing
+
+Add tests for each component:
+
+- Backend: Use Jest or Mocha for API testing.
+- ML Model: Use pytest for Python testing.
+- Mobile App: Use Jest and React Native Testing Library.
+
+## Deployment
+
+### Backend Deployment
+
+Deploy the Node.js backend to platforms like Heroku, Vercel, or AWS.
+
+### ML Model Deployment
+
+Deploy the Flask app to cloud platforms like Heroku, Google Cloud Run, or AWS Lambda.
+
+### Mobile App Deployment
+
+Build and submit the app to app stores using Expo Application Services (EAS):
+
+```bash
+npx eas build --platform ios
+npx eas build --platform android
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
 ## License
 
 This project is licensed under the MIT License.
+
+## Support
+
+For questions or issues, please open an issue on GitHub or contact the development team.
