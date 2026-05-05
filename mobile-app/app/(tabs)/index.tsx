@@ -7,6 +7,10 @@ interface HealthData {
   spo2?: number | null;
   gsr?: number | null;
   status?: string;
+  predictionLevel?: string;
+  stress?: number | null;
+  issues?: string[];
+  measures?: string[];
   timestamp?: string;
 }
 
@@ -16,8 +20,15 @@ const initialHealthData: HealthData = {
   spo2: null,
   gsr: null,
   status: 'Waiting...',
+  predictionLevel: 'Waiting...',
+  stress: 0,
+  issues: [],
+  measures: [],
   timestamp: undefined,
 };
+
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://10.19.151.76:5000';
+const LATEST_ENDPOINT = `${API_BASE_URL}/api/latest`;
 
 export default function HomeScreen() {
   const [data, setData] = useState<HealthData>(initialHealthData);
@@ -26,9 +37,9 @@ export default function HomeScreen() {
 
   const fetchData = async () => {
     try {
-      console.log('[FETCH] Attempting to fetch from http://10.60.196.201:5000/api/latest');
+      console.log('[FETCH] Attempting to fetch from', LATEST_ENDPOINT);
 
-      const response = await fetch('http://10.60.196.201:5000/api/latest', {
+      const response = await fetch(LATEST_ENDPOINT, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -44,7 +55,11 @@ export default function HomeScreen() {
       const nextData: HealthData = {
         ...initialHealthData,
         ...payload,
-        status: payload?.status ?? 'Waiting...',
+        status: payload?.status ?? payload?.predictionLevel ?? 'Waiting...',
+        predictionLevel: payload?.predictionLevel ?? payload?.status ?? 'Waiting...',
+        stress: typeof payload?.stress === 'number' ? payload.stress : 0,
+        issues: Array.isArray(payload?.issues) ? payload.issues : [],
+        measures: Array.isArray(payload?.measures) ? payload.measures : [],
       };
 
       setData({ ...nextData });
@@ -107,11 +122,11 @@ export default function HomeScreen() {
 
       <View style={styles.dataContainer}>
         <Text style={styles.value}>
-          🌡 Temperature: <Text style={styles.valueHighlight}>{safeRender(data?.temperature)}°C</Text>
+          🌡 temp: <Text style={styles.valueHighlight}>{safeRender(data?.temperature)}°C</Text>
         </Text>
 
         <Text style={styles.value}>
-          ❤️ Heart Rate: <Text style={styles.valueHighlight}>{safeRender(data?.heartRate)} bpm</Text>
+          ❤️ heartrate: <Text style={styles.valueHighlight}>{safeRender(data?.heartRate)} bpm</Text>
         </Text>
 
         <Text style={styles.value}>
@@ -123,6 +138,16 @@ export default function HomeScreen() {
         </Text>
 
         <Text style={[styles.status, { color: getStatusColor(data?.status) }]}>Status: {data?.status ?? 'Waiting...'}</Text>
+
+        <Text style={styles.sectionTitle}>issues</Text>
+        <Text style={styles.listText}>
+          {data?.issues?.length ? data.issues.map((issue) => `- ${issue}`).join('\n') : '- No active issue'}
+        </Text>
+
+        <Text style={styles.sectionTitle}>measures</Text>
+        <Text style={styles.listText}>
+          {data?.measures?.length ? data.measures.map((measure) => `- ${measure}`).join('\n') : '- No active measure'}
+        </Text>
 
         <Text style={styles.timestamp}>
           Last updated: {data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '--'}
@@ -210,6 +235,19 @@ const styles = StyleSheet.create({
     marginTop: 16,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    color: '#e2e8f0',
+    marginTop: 14,
+    fontWeight: '700',
+    textTransform: 'lowercase',
+  },
+  listText: {
+    fontSize: 14,
+    color: '#cbd5e1',
+    marginTop: 8,
+    lineHeight: 20,
   },
   debugInfo: {
     fontSize: 12,

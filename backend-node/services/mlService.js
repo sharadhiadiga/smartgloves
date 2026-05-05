@@ -7,12 +7,17 @@ const predictHealth = async (data) => {
       data,
       { timeout: 2000 }
     );
-
-    return response.data.status;
+    return response.data;
 
   } catch (error) {
     console.error("ML Error:", error.message);
-    return "Unknown";
+    return {
+      level: "Unknown",
+      class: "Unknown",
+      stress: 0,
+      issues: ["Prediction service unavailable"],
+      measures: ["Verify ML API is running and reachable from backend"],
+    };
   }
 };
 
