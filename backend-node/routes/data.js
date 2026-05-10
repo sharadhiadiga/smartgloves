@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const SmartGlove = require('../models/SmartGlove');
+const { predictHealth } = require('../services/mlService');
 
 let history = [];
 
@@ -22,8 +23,10 @@ function analyzeStatus({ heartRate, spo2 }) {
 router.post('/data', async (req, res) => {
   try {
     const { temperature, heartRate, spo2, gsr, deviceId } = req.body;
+    const mlPrediction = await predictHealth({ temperature, heartRate, spo2, gsr });
+    const level = mlPrediction?.level || mlPrediction?.class || 'Unknown';
 
-    const status = analyzeStatus({ heartRate, spo2 });
+    const status = level !== 'Unknown' ? level : analyzeStatus({ heartRate, spo2 });
 
     const result = {
       temperature,
@@ -31,6 +34,10 @@ router.post('/data', async (req, res) => {
       spo2,
       gsr,
       status,
+      predictionLevel: level,
+      stress: Number.isFinite(mlPrediction?.stress) ? mlPrediction.stress : 0,
+      issues: Array.isArray(mlPrediction?.issues) ? mlPrediction.issues : [],
+      measures: Array.isArray(mlPrediction?.measures) ? mlPrediction.measures : [],
       deviceId,
       timestamp: new Date(),
     };
@@ -45,6 +52,10 @@ router.post('/data', async (req, res) => {
     const fallbackEntry = {
       ...req.body,
       status: analyzeStatus(req.body),
+      predictionLevel: 'Unknown',
+      stress: 0,
+      issues: ['Saved in memory fallback'],
+      measures: ['Verify MongoDB and ML service connectivity'],
       timestamp: new Date(),
     };
 
@@ -61,7 +72,7 @@ router.get('/latest', async (req, res) => {
   try {
     const latest = await SmartGlove.findOne().sort({ timestamp: -1 }).lean();
     if (!latest) {
-      return res.json({ message: 'No data yet' });
+      return res.json({ message: 'No data yet', status: 'Waiting...' });
     }
 
     res.json(latest);
@@ -69,7 +80,7 @@ router.get('/latest', async (req, res) => {
     console.error('[DATA LATEST ERROR]', error);
 
     if (history.length === 0) {
-      return res.status(500).json({ error: 'Unable to retrieve latest entry' });
+      return res.json({ message: 'No data yet', status: 'Waiting...' });
     }
 
     res.json(history[history.length - 1]);
