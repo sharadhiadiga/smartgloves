@@ -18,6 +18,8 @@ INPUT_RANGES = {
 }
 FEATURE_ORDER = ["temperature", "heartRate", "spo2", "gsr"]
 
+# Global dictionary to store patients
+patients: Dict[str, Dict[str, Any]] = {}
 
 def load_model(path: str):
     """Load the trained ML model once when the server starts."""
@@ -138,6 +140,65 @@ def index():
     return "API is running", 200
 
 
+@app.route("/api/data", methods=["POST"])
+def api_data():
+    """Store patient data after processing."""
+    payload = request.get_json(silent=True)
+    if not payload or 'id' not in payload:
+        return jsonify({"error": "Missing id"}), 400
+
+    id = str(payload['id'])
+    values, errors = validate_input(payload)
+
+    if errors:
+        return jsonify({"error": "ValidationError", "details": errors}), 400
+
+    feature_vector = [values[field] for field in FEATURE_ORDER]
+
+    try:
+        model_pred = model.predict([feature_vector])[0]
+    except Exception as err:
+        return jsonify({"error": "PredictionError", "details": str(err)}), 500
+
+    prediction = safety_override(
+        values["temperature"],
+        values["heartRate"],
+        values["spo2"],
+        str(model_pred),
+    )
+    recommendation = get_solution(prediction)
+    stress, issues, measures = analyze_conditions(
+        values["temperature"],
+        values["heartRate"],
+        values["spo2"],
+        values["gsr"],
+    )
+
+    patient_data = {
+        "id": id,
+        "name": f"Patient {id}",
+        "temperature": values["temperature"],
+        "heartRate": values["heartRate"],
+        "spo2": values["spo2"],
+        "gsr": values["gsr"],
+        "stress": stress,
+        "status": prediction,
+        "issues": issues,
+        "measures": measures,
+        "recommendation": recommendation,
+        "timestamp": "2026-05-10T14:30:00"
+    }
+
+    patients[id] = patient_data
+    return jsonify({"message": "Data stored"}), 200
+
+
+@app.route("/api/all-patients", methods=["GET"])
+def all_patients():
+    """Return all stored patients."""
+    return jsonify({"patients": list(patients.values())}), 200
+
+
 @app.route("/predict", methods=["POST"])
 def predict():
     """Predict condition based on smart glove sensor data."""
@@ -179,4 +240,5 @@ def predict():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=False)
+

@@ -22,6 +22,26 @@ const smartGloveSchema = new mongoose.Schema({
     required: true,
     default: 'Unknown',
   },
+  predictionLevel: {
+    type: String,
+    required: false,
+    default: 'Unknown',
+  },
+  stress: {
+    type: Number,
+    required: false,
+    default: 0,
+  },
+  issues: {
+    type: [String],
+    required: false,
+    default: [],
+  },
+  measures: {
+    type: [String],
+    required: false,
+    default: [],
+  },
   deviceId: {
     type: String,
     required: false,

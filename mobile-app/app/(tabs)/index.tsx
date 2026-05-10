@@ -1,306 +1,346 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  SafeAreaView,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import PatientCard, { Patient } from '@/components/PatientCard';
 
-interface HealthData {
-  temperature?: number | null;
-  heartRate?: number | null;
-  spo2?: number | null;
-  gsr?: number | null;
-  status?: string;
-  level?: string;
-  timestamp?: string;
-  stress?: number | null;
-  issues?: string[];
-  measures?: string[];
-  recommendation?: string | null;
+type PatientStatusFilter = 'All' | 'Critical' | 'High' | 'Moderate' | 'Low';
+const STATUS_FILTERS: PatientStatusFilter[] = ['All', 'Critical', 'High', 'Moderate', 'Low'];
+
+const API_ENDPOINT = "http://10.60.196.201:5000/api/all-patients";
+
+interface ApiResponse {
+  patients?: Array<Partial<Patient>>;
 }
 
-const initialHealthData: HealthData = {
-  temperature: null,
-  heartRate: null,
-  spo2: null,
-  gsr: null,
-  status: 'Waiting...',
-  level: 'Unknown',
-  timestamp: undefined,
-  stress: null,
-  issues: [],
-  measures: [],
-  recommendation: null,
-};
-
-export default function HomeScreen() {
-  const [data, setData] = useState<HealthData>(initialHealthData);
-  const [loading, setLoading] = useState<boolean>(true);
+export default function App() {
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState<PatientStatusFilter>('All');
+  const [refreshing, setRefreshing] = useState(false);
+  const listRef = useRef<FlatList<Patient> | null>(null);
+  const firstLoadRef = useRef(true);
+  const previousPatientIds = useRef<string[]>([]);
 
-  const API_URL = 'http://10.19.151.233:5001/predict';
-
-  const fetchData = async () => {
-    setLoading(true);
-    const startTime = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    try {
-      const requestBody = {
-        temperature: data.temperature ?? 36.8,
-        heartRate: data.heartRate ?? 75,
-        spo2: data.spo2 ?? 98,
-        gsr: data.gsr ?? 1200,
-      };
-
-      console.log('[FETCH] Attempting to fetch from', API_URL, requestBody);
-
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-      const responseTime = Date.now() - startTime;
-      console.log('[FETCH] Response received, status:', response.status, 'in', responseTime, 'ms');
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[FETCH] Backend error:', response.status, errorText);
-        throw new Error(`API error ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('DATA RECEIVED:', result);
-
-      const nextData: HealthData = {
-        ...initialHealthData,
-        ...data,
-        ...requestBody,
-        stress: result?.stress ?? null,
-        issues: result?.issues ?? [],
-        measures: result?.measures ?? [],
-        status: result?.condition ?? data.status ?? 'Waiting...',
-        level: result?.level ?? result?.condition ?? data.level ?? 'Unknown',
-        recommendation: result?.recommendation ?? null,
-      };
-
-      setData({ ...nextData });
-      setError(null);
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        console.error('[ERROR] Fetch timeout after 10 seconds');
-        setError('Request timed out');
-      } else {
-        console.error('[ERROR] Fetch error:', err?.message ?? err);
-        setError(err?.message || 'Failed to fetch data');
-      }
-    } finally {
-      setLoading(false);
+  const normalizeStatus = (rawStatus: unknown): Patient['status'] => {
+    if (typeof rawStatus !== 'string') {
+      return 'Unknown';
     }
+
+    const normalized = rawStatus.trim().toLowerCase();
+
+    if (normalized === 'critical') return 'Critical';
+    if (normalized === 'high') return 'High';
+    if (normalized === 'moderate') return 'Moderate';
+    if (normalized === 'low' || normalized === 'normal') return 'Low';
+
+    return 'Unknown';
   };
+
+  const normalizePatient = useCallback(
+    (item: Partial<Patient>): Patient => {
+      return {
+        id: typeof item?.id === 'string' && item.id.trim().length > 0 ? item.id : `${Date.now()}`,
+        name: typeof item?.name === 'string' && item.name.trim().length > 0 ? item.name : 'Unknown Patient',
+        temperature: typeof item?.temperature === 'number' ? item.temperature : null,
+        heartRate: typeof item?.heartRate === 'number' ? item.heartRate : null,
+        spo2: typeof item?.spo2 === 'number' ? item.spo2 : null,
+        gsr: typeof item?.gsr === 'number' ? item.gsr : null,
+        stress: typeof item?.stress === 'number' ? item.stress : null,
+        status: normalizeStatus(item?.status),
+        issues: Array.isArray(item?.issues)
+          ? item.issues.filter((issue) => typeof issue === 'string' && issue.trim().length > 0)
+          : [],
+        measures: Array.isArray(item?.measures)
+          ? item.measures.filter((measure) => typeof measure === 'string' && measure.trim().length > 0)
+          : [],
+        recommendation:
+          typeof item?.recommendation === 'string' && item.recommendation.trim().length > 0
+            ? item.recommendation
+            : '--',
+        timestamp:
+          typeof item?.timestamp === 'string' && item.timestamp.trim().length > 0
+            ? item.timestamp
+            : '--',
+      };
+    },
+    [normalizeStatus]
+  );
+
+  const fetchPatients = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        if (firstLoadRef.current) {
+          setLoading(true);
+        }
+
+        const response = await fetch(API_ENDPOINT, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal,
+        });
+
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || `Server returned ${response.status}`);
+        }
+
+        const json = (await response.json()) as ApiResponse;
+        console.log("API RESPONSE:", json);
+        const payload = Array.isArray(json.patients) ? json.patients : [];
+        setPatients(payload.map(normalizePatient));
+        setError(null);
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          return;
+        }
+        setError(err?.message ?? 'Unable to fetch patient data');
+      } finally {
+        if (firstLoadRef.current) {
+          setLoading(false);
+          firstLoadRef.current = false;
+        }
+        setRefreshing(false);
+      }
+    },
+    [normalizePatient]
+  );
 
   useEffect(() => {
-    fetchData();
+    const controller = new AbortController();
+
+    fetchPatients(controller.signal);
 
     const interval = setInterval(() => {
-      fetchData();
-    }, 5000);
+      const innerController = new AbortController();
+      fetchPatients(innerController.signal);
+      return () => innerController.abort();
+    }, 3000);
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearInterval(interval);
+      controller.abort();
+    };
+  }, [fetchPatients]);
 
-  const getStatusColor = (status?: string | null): string => {
-    if (!status) return '#e2e8f0';
-    switch (status.toLowerCase()) {
-      case 'normal':
-        return '#22c55e';
-      case 'high stress':
-        return '#f59e0b';
-      case 'abnormal':
-        return '#ef4444';
-      default:
-        return '#e2e8f0';
+  useEffect(() => {
+    const ids = patients.map((patient) => patient.id);
+
+    if (previousPatientIds.current.length > 0 && ids.join(',') !== previousPatientIds.current.join(',')) {
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
     }
-  };
 
-  const safeRender = (value: number | null | undefined, defaultText: string = '--'): string => {
-    if (value === null || value === undefined || Number.isNaN(value)) {
-      return defaultText;
-    }
-    return String(value);
-  };
+    previousPatientIds.current = ids;
+  }, [patients]);
+
+  const filteredPatients = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return patients.filter((patient) => {
+      const statusMatch = filterStatus === 'All' || patient.status === filterStatus;
+      const searchMatch =
+        query.length === 0 ||
+        patient.name.toLowerCase().includes(query) ||
+        patient.id.toLowerCase().includes(query);
+
+      return statusMatch && searchMatch;
+    });
+  }, [filterStatus, patients, searchQuery]);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    const controller = new AbortController();
+    fetchPatients(controller.signal).finally(() => controller.abort());
+  }, [fetchPatients]);
+
+  const renderPatient = useCallback(
+    ({ item }: { item: Patient }) => {
+      return <PatientCard patient={item} />;
+    },
+    []
+  );
+
+  const keyExtractor = useCallback((item: Patient) => item.id, []);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Health Monitor</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.page}>
+        <Text style={styles.title}>Doctor Dashboard</Text>
+        <Text style={styles.subtitle}>Real-time patient vitals and recommendations</Text>
 
-      {loading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#60a5fa" />
-          <Text style={styles.loadingText}>Loading health data...</Text>
+        <View style={styles.searchContainer}>
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search by name or patient ID"
+            placeholderTextColor="#94A3B8"
+            style={styles.searchInput}
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+          />
         </View>
-      )}
 
-      {error ? (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>⚠️ {error}</Text>
+        <View style={styles.filterRow}>
+          {STATUS_FILTERS.map((status) => {
+            const isActive = filterStatus === status;
+            return (
+              <Pressable
+                key={status}
+                onPress={() => setFilterStatus(status)}
+                style={({ pressed }) => [
+                  styles.filterButton,
+                  isActive && styles.filterButtonActive,
+                  pressed && styles.filterButtonPressed,
+                ]}
+              >
+                <Text style={[styles.filterText, isActive && styles.filterTextActive]}>{status}</Text>
+              </Pressable>
+            );
+          })}
         </View>
-      ) : null}
 
-      <View style={styles.dataContainer}>
-        <Text style={styles.value}>
-          🌡 Temperature: <Text style={styles.valueHighlight}>{safeRender(data?.temperature)}°C</Text>
-        </Text>
-
-        <Text style={styles.value}>
-          ❤️ Heart Rate: <Text style={styles.valueHighlight}>{safeRender(data?.heartRate)} bpm</Text>
-        </Text>
-
-        <Text style={styles.value}>
-          🫁 SpO₂: <Text style={styles.valueHighlight}>{safeRender(data?.spo2)}%</Text>
-        </Text>
-
-        <Text style={styles.value}>
-          🧠 GSR: <Text style={styles.valueHighlight}>{safeRender(data?.gsr)} µS</Text>
-        </Text>
-
-        <Text style={[styles.status, { color: getStatusColor(data?.status) }]}>Status: {data?.status ?? 'Waiting...'}</Text>
-
-        <Text style={styles.value}>
-          � Level: <Text style={styles.valueHighlight}>{data?.level ?? 'Unknown'}</Text>
-        </Text>
-
-        <Text style={styles.value}>
-          �📈 Stress level: <Text style={styles.valueHighlight}>{safeRender(data?.stress)}%</Text>
-        </Text>
-
-        <Text style={styles.subHeader}>Issues</Text>
-        {data?.issues && data.issues.length > 0 ? (
-          data.issues.map((issue, index) => (
-            <Text key={`issue-${index}`} style={styles.listItem}>
-              • {issue}
-            </Text>
-          ))
-        ) : (
-          <Text style={styles.listItem}>No issues reported.</Text>
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#7C3AED" />
+            <Text style={styles.loadingText}>Loading live patients...</Text>
+          </View>
         )}
 
-        <Text style={styles.subHeader}>Measures</Text>
-        {data?.measures && data.measures.length > 0 ? (
-          data.measures.map((measure, index) => (
-            <Text key={`measure-${index}`} style={styles.listItem}>
-              • {measure}
-            </Text>
-          ))
-        ) : (
-          <Text style={styles.listItem}>No measures available.</Text>
+        {error && !loading && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Unable to load patient dashboard.</Text>
+            <Text style={styles.errorDetail}>{error}</Text>
+          </View>
         )}
 
-        <Text style={styles.timestamp}>
-          Last updated: {data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '--'}
-        </Text>
+        <FlatList
+          ref={listRef}
+          data={filteredPatients}
+          renderItem={renderPatient}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          ListEmptyComponent={
+            !loading ? (
+              <Text style={styles.emptyText}>
+                {error ? 'Using last fetched data, or wait for retry.' : 'No patients yet'}
+              </Text>
+            ) : null
+          }
+        />
       </View>
-
-      <Text style={styles.debugInfo}>
-        {loading ? 'Refreshing every 5 seconds...' : error ? 'Offline' : 'Connected'}
-      </Text>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0f172a',
-    paddingHorizontal: 20,
+    backgroundColor: '#020617',
+  },
+  page: {
+    flex: 1,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    backgroundColor: '#020617',
   },
   title: {
-    fontSize: 32,
-    color: '#ffffff',
-    marginBottom: 30,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#F8FAFC',
+  },
+  subtitle: {
+    marginTop: 6,
+    fontSize: 15,
+    color: '#94A3B8',
+    marginBottom: 16,
+  },
+  searchContainer: {
+    borderRadius: 14,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 12,
+  },
+  searchInput: {
+    height: 44,
+    paddingHorizontal: 16,
+    color: '#F8FAFC',
+    fontSize: 15,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  filterButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#334155',
+    backgroundColor: '#0F172A',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  filterButtonActive: {
+    backgroundColor: '#4338CA',
+    borderColor: '#6366F1',
+  },
+  filterButtonPressed: {
+    opacity: 0.85,
+  },
+  filterText: {
+    color: '#E2E8F0',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  filterTextActive: {
+    color: '#FFFFFF',
   },
   loadingContainer: {
-    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginVertical: 24,
   },
   loadingText: {
-    fontSize: 16,
-    color: '#94a3b8',
     marginTop: 12,
+    color: '#94A3B8',
   },
   errorContainer: {
-    width: '100%',
-    backgroundColor: '#7f1d1d',
-    borderLeftWidth: 4,
-    borderLeftColor: '#ef4444',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    marginBottom: 20,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#831843',
   },
   errorText: {
-    fontSize: 16,
-    color: '#fca5a5',
-  },
-  dataContainer: {
-    width: '100%',
-    backgroundColor: '#1e293b',
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    borderTopWidth: 2,
-    borderTopColor: '#3b82f6',
-  },
-  value: {
-    fontSize: 18,
-    color: '#cbd5e1',
-    marginVertical: 10,
-    fontWeight: '500',
-  },
-  valueHighlight: {
-    fontSize: 20,
-    color: '#60a5fa',
+    color: '#F8FAFC',
     fontWeight: '700',
+    marginBottom: 6,
   },
-  status: {
-    fontSize: 24,
-    marginTop: 20,
-    fontWeight: '700',
+  errorDetail: {
+    color: '#CBD5E1',
+    fontSize: 13,
+  },
+  listContent: {
+    paddingBottom: 24,
+  },
+  emptyText: {
+    color: '#94A3B8',
+    fontSize: 15,
     textAlign: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-  },
-  subHeader: {
-    fontSize: 16,
-    color: '#cbd5e1',
-    marginTop: 14,
-    fontWeight: '700',
-  },
-  listItem: {
-    fontSize: 14,
-    color: '#cbd5e1',
-    marginLeft: 6,
-    marginTop: 6,
-  },
-  timestamp: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 16,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  debugInfo: {
-    fontSize: 12,
-    color: '#94a3b8',
     marginTop: 20,
   },
 });
