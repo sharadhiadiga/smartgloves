@@ -50,7 +50,7 @@ const formatValue = (value: number | null, suffix = '') => {
   return typeof value === 'number' ? `${value}${suffix}` : '--';
 };
 
-const PatientCard = ({ patient }: { patient: Patient }) => {
+const PatientCard = React.memo(function PatientCard({ patient }: { patient: Patient }) {
   const statusStyle = STATUS_STYLES[patient.status] ?? STATUS_STYLES.Unknown;
 
   return (
@@ -119,7 +119,7 @@ const PatientCard = ({ patient }: { patient: Patient }) => {
       <Text style={styles.timestamp}>⏱ {patient.timestamp}</Text>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   card: {

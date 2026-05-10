@@ -1,4 +1,5 @@
 ﻿import os
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 import joblib
@@ -186,7 +187,7 @@ def api_data():
         "issues": issues,
         "measures": measures,
         "recommendation": recommendation,
-        "timestamp": "2026-05-10T14:30:00"
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
     patients[id] = patient_data
@@ -240,5 +241,7 @@ def predict():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    # Default 5001 — Node API typically uses 5000
+    port = int(os.getenv("PORT", "5001"))
+    app.run(host="0.0.0.0", port=port, debug=False)
 

@@ -1,6 +1,15 @@
 const mongoose = require('mongoose');
 
 const smartGloveSchema = new mongoose.Schema({
+  patientId: {
+    type: String,
+    required: true,
+    index: true,
+  },
+  name: {
+    type: String,
+    required: false,
+  },
   temperature: {
     type: Number,
     required: true,
@@ -27,6 +36,11 @@ const smartGloveSchema = new mongoose.Schema({
     required: false,
     default: 'Unknown',
   },
+  severity: {
+    type: String,
+    required: false,
+    default: 'Low',
+  },
   stress: {
     type: Number,
     required: false,
@@ -41,6 +55,11 @@ const smartGloveSchema = new mongoose.Schema({
     type: [String],
     required: false,
     default: [],
+  },
+  recommendation: {
+    type: String,
+    required: false,
+    default: '',
   },
   deviceId: {
     type: String,

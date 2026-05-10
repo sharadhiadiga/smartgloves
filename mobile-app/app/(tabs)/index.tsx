@@ -10,20 +10,50 @@ import {
   View,
 } from 'react-native';
 import PatientCard, { Patient } from '@/components/PatientCard';
+import { getApiBaseUrl } from '@/constants/api';
 
 type PatientStatusFilter = 'All' | 'Critical' | 'High' | 'Moderate' | 'Low';
 const STATUS_FILTERS: PatientStatusFilter[] = ['All', 'Critical', 'High', 'Moderate', 'Low'];
 
-const API_ENDPOINT = "http://10.60.196.201:5000/api/all-patients";
+const API_BASE_URL = getApiBaseUrl();
+const API_ENDPOINT = `${API_BASE_URL}/api/all-patients`;
+const API_HEALTH_ENDPOINT = `${API_BASE_URL}/health`;
+
+console.log('[Dashboard] API_BASE_URL (resolved):', API_BASE_URL);
+console.log('[Dashboard] Patients endpoint:', API_ENDPOINT);
+/** How often the doctor dashboard refetches (same patientId picks up latest reading). */
+const POLL_INTERVAL_MS = 2000;
 
 interface ApiResponse {
   patients?: Array<Partial<Patient>>;
+}
+
+interface RawPatient extends Partial<Patient> {
+  _id?: string;
+  deviceId?: string;
+  patientId?: string;
+  severity?: string;
+}
+
+function formatPatientTimestamp(ts: unknown): string {
+  if (ts == null) return '--';
+  if (typeof ts === 'string' && ts.trim().length > 0) {
+    const d = new Date(ts);
+    return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
+  }
+  if (typeof ts === 'number' && Number.isFinite(ts)) {
+    return new Date(ts).toLocaleString();
+  }
+  return '--';
 }
 
 export default function App() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<PatientStatusFilter>('All');
   const [refreshing, setRefreshing] = useState(false);
@@ -47,16 +77,30 @@ export default function App() {
   };
 
   const normalizePatient = useCallback(
-    (item: Partial<Patient>): Patient => {
+    (item: RawPatient): Patient => {
+      const resolvedId =
+        typeof item?.id === 'string' && item.id.trim().length > 0
+          ? item.id
+          : typeof item?.patientId === 'string' && item.patientId.trim().length > 0
+            ? item.patientId
+          : typeof item?._id === 'string' && item._id.trim().length > 0
+            ? item._id
+            : typeof item?.deviceId === 'string' && item.deviceId.trim().length > 0
+              ? item.deviceId
+              : 'unknown-id';
+
       return {
-        id: typeof item?.id === 'string' && item.id.trim().length > 0 ? item.id : `${Date.now()}`,
-        name: typeof item?.name === 'string' && item.name.trim().length > 0 ? item.name : 'Unknown Patient',
+        id: resolvedId,
+        name:
+          typeof item?.name === 'string' && item.name.trim().length > 0
+            ? item.name
+            : resolvedId,
         temperature: typeof item?.temperature === 'number' ? item.temperature : null,
         heartRate: typeof item?.heartRate === 'number' ? item.heartRate : null,
         spo2: typeof item?.spo2 === 'number' ? item.spo2 : null,
         gsr: typeof item?.gsr === 'number' ? item.gsr : null,
         stress: typeof item?.stress === 'number' ? item.stress : null,
-        status: normalizeStatus(item?.status),
+        status: normalizeStatus(item?.status || item?.severity),
         issues: Array.isArray(item?.issues)
           ? item.issues.filter((issue) => typeof issue === 'string' && issue.trim().length > 0)
           : [],
@@ -67,10 +111,7 @@ export default function App() {
           typeof item?.recommendation === 'string' && item.recommendation.trim().length > 0
             ? item.recommendation
             : '--',
-        timestamp:
-          typeof item?.timestamp === 'string' && item.timestamp.trim().length > 0
-            ? item.timestamp
-            : '--',
+        timestamp: formatPatientTimestamp(item?.timestamp),
       };
     },
     [normalizeStatus]
@@ -82,6 +123,7 @@ export default function App() {
         if (firstLoadRef.current) {
           setLoading(true);
         }
+        console.log('Fetching from:', API_ENDPOINT);
 
         const response = await fetch(API_ENDPOINT, {
           method: 'GET',
@@ -96,16 +138,40 @@ export default function App() {
           throw new Error(message || `Server returned ${response.status}`);
         }
 
-        const json = (await response.json()) as ApiResponse;
-        console.log("API RESPONSE:", json);
-        const payload = Array.isArray(json.patients) ? json.patients : [];
-        setPatients(payload.map(normalizePatient));
+        const json = (await response.json()) as ApiResponse | Array<RawPatient>;
+        console.log('Live API Response keys:', Array.isArray(json) ? 'array' : Object.keys(json || {}));
+        console.log('Live API Response:', JSON.stringify(json).slice(0, 2000));
+
+        void fetch(API_HEALTH_ENDPOINT, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        })
+          .then((r) => r.json())
+          .then((h) => console.log('[Dashboard] /health:', h))
+          .catch(() => undefined);
+        const payload: RawPatient[] = Array.isArray(json)
+          ? json
+          : Array.isArray(json?.patients)
+            ? (json.patients as RawPatient[])
+            : [];
+        const normalized = payload.map(normalizePatient).filter((item) => item.id !== 'unknown-id');
+        setPatients(normalized);
+        setLastUpdated(new Date().toISOString());
+        setRetryCount(0);
+        setOffline(false);
         setError(null);
       } catch (err: any) {
         if (err.name === 'AbortError') {
           return;
         }
-        setError(err?.message ?? 'Unable to fetch patient data');
+        console.log('Fetch error:', err);
+        setRetryCount((current) => current + 1);
+        setOffline(true);
+        const hint =
+          err?.message === 'Network request failed'
+            ? `${err.message} — use same Wi‑Fi as this machine, allow port 5000, backend base ${API_BASE_URL} (Node must listen on 0.0.0.0)`
+            : err?.message ?? 'Unable to fetch patient data';
+        setError(hint);
       } finally {
         if (firstLoadRef.current) {
           setLoading(false);
@@ -123,10 +189,8 @@ export default function App() {
     fetchPatients(controller.signal);
 
     const interval = setInterval(() => {
-      const innerController = new AbortController();
-      fetchPatients(innerController.signal);
-      return () => innerController.abort();
-    }, 3000);
+      void fetchPatients();
+    }, POLL_INTERVAL_MS);
 
     return () => {
       clearInterval(interval);
@@ -178,6 +242,12 @@ export default function App() {
       <View style={styles.page}>
         <Text style={styles.title}>Doctor Dashboard</Text>
         <Text style={styles.subtitle}>Real-time patient vitals and recommendations</Text>
+        <Text style={styles.networkInfo}>API: {API_BASE_URL}</Text>
+        <Text style={styles.networkInfo}>
+          Status: {offline ? 'Offline/Reconnecting' : 'Connected'}
+          {lastUpdated ? ` | Updated: ${new Date(lastUpdated).toLocaleTimeString()}` : ''}
+        </Text>
+        {retryCount > 0 && <Text style={styles.retryText}>Retries: {retryCount}</Text>}
 
         <View style={styles.searchContainer}>
           <TextInput
@@ -229,6 +299,10 @@ export default function App() {
           data={filteredPatients}
           renderItem={renderPatient}
           keyExtractor={keyExtractor}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          initialNumToRender={6}
+          removeClippedSubviews
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
@@ -267,6 +341,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#94A3B8',
     marginBottom: 16,
+  },
+  networkInfo: {
+    color: '#93C5FD',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  retryText: {
+    color: '#FCA5A5',
+    fontSize: 12,
+    marginBottom: 10,
   },
   searchContainer: {
     borderRadius: 14,
