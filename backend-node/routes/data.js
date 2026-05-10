@@ -6,10 +6,8 @@ const { predictHealth } = require('../services/mlService');
 let history = [];
 
 function analyzeStatus({ heartRate, spo2 }) {
-  // Start with a safe default
   let status = 'Normal';
 
-  // Critical is the most severe alert
   if ((typeof heartRate === 'number' && heartRate > 120) || (typeof spo2 === 'number' && spo2 < 90)) {
     status = 'Critical';
   } else if ((typeof heartRate === 'number' && heartRate > 100) || (typeof spo2 === 'number' && spo2 < 95)) {
@@ -19,50 +17,76 @@ function analyzeStatus({ heartRate, spo2 }) {
   return status;
 }
 
+function validateSensorData(data) {
+  const required = ['temperature', 'heartRate', 'spo2', 'gsr'];
+  const missing = required.filter((field) => data[field] === undefined || data[field] === null || data[field] === '');
+  return {
+    valid: missing.length === 0,
+    missing,
+  };
+}
+
 // POST /api/data
 router.post('/data', async (req, res) => {
+  console.log('Incoming Data:', req.body);
+
+  const { temperature, heartRate, spo2, gsr, deviceId } = req.body;
+  const sensorData = { temperature, heartRate, spo2, gsr };
+
+  const { valid, missing } = validateSensorData(sensorData);
+  if (!valid) {
+    console.error('Invalid input data:', missing);
+  }
+
+  let mlPrediction = {
+    level: 'Unknown',
+    status: 'Unknown',
+    stress: 0,
+    issues: ['Invalid or incomplete ML input data'],
+    measures: ['Provide temperature, heartRate, spo2, and gsr values'],
+    recommendation: 'ML unavailable',
+  };
+
   try {
-    const { temperature, heartRate, spo2, gsr, deviceId } = req.body;
-    const mlPrediction = await predictHealth({ temperature, heartRate, spo2, gsr });
-    const level = mlPrediction?.level || mlPrediction?.class || 'Unknown';
+    if (valid) {
+      mlPrediction = await predictHealth(sensorData);
+    }
+  } catch (mlError) {
+    console.error('ML Error:', mlError?.message || mlError);
+  }
 
-    const status = level !== 'Unknown' ? level : analyzeStatus({ heartRate, spo2 });
+  const level = mlPrediction?.level || mlPrediction?.status || 'Unknown';
+  const status = level !== 'Unknown' ? level : analyzeStatus({ heartRate, spo2 });
 
-    const result = {
-      temperature,
-      heartRate,
-      spo2,
-      gsr,
-      status,
-      predictionLevel: level,
-      stress: Number.isFinite(mlPrediction?.stress) ? mlPrediction.stress : 0,
-      issues: Array.isArray(mlPrediction?.issues) ? mlPrediction.issues : [],
-      measures: Array.isArray(mlPrediction?.measures) ? mlPrediction.measures : [],
-      deviceId,
-      timestamp: new Date(),
-    };
+  const result = {
+    temperature,
+    heartRate,
+    spo2,
+    gsr,
+    status,
+    predictionLevel: level,
+    stress: Number.isFinite(mlPrediction?.stress) ? mlPrediction.stress : 0,
+    issues: Array.isArray(mlPrediction?.issues) ? mlPrediction.issues : [],
+    measures: Array.isArray(mlPrediction?.measures) ? mlPrediction.measures : [],
+    recommendation: typeof mlPrediction?.recommendation === 'string' ? mlPrediction.recommendation : 'ML unavailable',
+    deviceId,
+    timestamp: new Date(),
+  };
 
+  console.log('Prediction:', mlPrediction);
+
+  try {
     const savedEntry = await SmartGlove.create(result);
     history.push(savedEntry);
+    return res.json({ message: 'Data stored', prediction: mlPrediction, data: savedEntry });
+  } catch (dbError) {
+    console.error('[DATA SAVE ERROR]', dbError);
 
-    res.json(savedEntry);
-  } catch (error) {
-    console.error('[DATA POST ERROR]', error);
-
-    const fallbackEntry = {
-      ...req.body,
-      status: analyzeStatus(req.body),
-      predictionLevel: 'Unknown',
-      stress: 0,
-      issues: ['Saved in memory fallback'],
-      measures: ['Verify MongoDB and ML service connectivity'],
-      timestamp: new Date(),
-    };
-
-    history.push(fallbackEntry);
-    res.status(500).json({
-      error: 'Unable to save to MongoDB, data stored in memory fallback',
-      fallback: fallbackEntry,
+    history.push(result);
+    return res.json({
+      message: 'Data stored in fallback memory',
+      prediction: mlPrediction,
+      data: result,
     });
   }
 });

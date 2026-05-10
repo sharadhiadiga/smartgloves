@@ -1,216 +1,244 @@
-import os
+﻿import os
 from typing import Any, Dict, List, Tuple
 
 import joblib
-import pandas as pd
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
-# Model expects these exact feature names and order.
-MODEL_FEATURES = ["temp", "hr", "spo2", "gsr"]
 MODEL_PATH = os.getenv("MODEL_PATH", "model.pkl")
-
-# Medically plausible sensor ranges for API validation.
+REQUIRED_FIELDS = ["temperature", "heartRate", "spo2", "gsr"]
 INPUT_RANGES = {
     "temperature": (30.0, 45.0),
     "heartRate": (30, 220),
     "spo2": (70, 100),
     "gsr": (0, 5000),
 }
+FEATURE_ORDER = ["temperature", "heartRate", "spo2", "gsr"]
 
+# Global dictionary to store patients
+patients: Dict[str, Dict[str, Any]] = {}
 
 def load_model(path: str):
-    """Load trained model once at startup (no retraining in API)."""
+    """Load the trained ML model once when the server starts."""
     if not os.path.exists(path):
         raise FileNotFoundError(f"Model file not found at '{path}'.")
+
     return joblib.load(path)
 
 
 model = load_model(MODEL_PATH)
 
 
-def validate_and_normalize(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
-    """
-    Validate required fields, types, and ranges.
-    Returns normalized numeric values + validation errors.
-    """
+def get_solution(prediction: str) -> str:
+    """Map string model labels to a recommended action."""
+    normalized_label = str(prediction).strip().lower()
+    return {
+        "normal": "Normal - No action needed",
+        "high": "High stress - Recommend rest",
+        "critical": "Possible health issue - Consult doctor",
+    }.get(normalized_label, "Unknown condition - Review input data")
+
+
+def safety_override(temperature: float, heartRate: float, spo2: float, current_level: str) -> str:
+    """Override prediction labels for critical physiological conditions."""
+    level = str(current_level).strip().lower()
+    critical = temperature >= 40.0 or temperature < 35.0 or heartRate >= 140 or heartRate < 45 or spo2 < 88
+    high_risk = temperature >= 38.5 or heartRate >= 120 or spo2 < 92
+
+    if critical:
+        return "critical"
+    if high_risk and level == "normal":
+        return "high"
+    return level
+
+
+def analyze_conditions(temperature: float, heartRate: float, spo2: float, gsr: float) -> Tuple[int, List[str], List[str]]:
+    """Generate stress score, issues, and recommended measures."""
+    issues: List[str] = []
+    measures: List[str] = []
+    score = 0
+
+    if temperature >= 38.0:
+        issues.append(f"Fever detected at {temperature:.1f}°C.")
+        measures.append("Hydrate, rest, and monitor temperature.")
+        score += 20
+    elif temperature < 36.0:
+        issues.append(f"Below normal temperature at {temperature:.1f}°C.")
+        measures.append("Keep warm and check for symptoms.")
+        score += 10
+
+    if heartRate >= 120:
+        issues.append(f"Elevated pulse at {heartRate} bpm.")
+        measures.append("Slow down activity and breathe deeply.")
+        score += 20
+    elif heartRate < 50:
+        issues.append(f"Low pulse at {heartRate} bpm.")
+        measures.append("Sit down and seek medical advice if dizzy.")
+        score += 15
+
+    if spo2 < 92:
+        issues.append(f"Low SpO₂ at {spo2}%.")
+        measures.append("Check sensor placement and consider oxygen support.")
+        score += 25
+    elif spo2 < 95:
+        issues.append(f"Mildly reduced SpO₂ at {spo2}%.")
+        measures.append("Take a few deep breaths and recheck.")
+        score += 10
+
+    if gsr >= 2200:
+        issues.append(f"GSR indicates elevated stress ({gsr}).")
+        measures.append("Pause and perform calming breathing exercises.")
+        score += 20
+    elif gsr >= 1600:
+        issues.append(f"GSR indicates moderate stress ({gsr}).")
+        measures.append("Take a short break and relax.")
+        score += 10
+
+    if not issues:
+        issues.append("All measured values are within expected range.")
+        measures.append("Continue standard monitoring.")
+
+    stress_level = min(100, max(0, score))
+    return stress_level, issues, measures
+
+
+def validate_input(payload: Any) -> Tuple[Dict[str, float], List[str]]:
+    """Validate the request JSON and required sensor values."""
     errors: List[str] = []
-    required = ["temperature", "heartRate", "spo2", "gsr"]
+    normalized: Dict[str, float] = {}
 
-    if payload is None or not isinstance(payload, dict):
-        return {}, ["Body must be valid JSON object."]
+    if not isinstance(payload, dict):
+        return {}, ["Request body must be valid JSON."]
 
-    missing = [field for field in required if field not in payload]
+    missing = [field for field in REQUIRED_FIELDS if field not in payload]
     if missing:
         errors.append(f"Missing required fields: {', '.join(missing)}.")
         return {}, errors
 
-    normalized: Dict[str, Any] = {}
-    numeric_casts = {
-        "temperature": float,
-        "heartRate": int,
-        "spo2": int,
-        "gsr": int,
-    }
-
-    for key, caster in numeric_casts.items():
+    for field in REQUIRED_FIELDS:
         try:
-            normalized[key] = caster(payload[key])
+            normalized[field] = float(payload[field])
         except (TypeError, ValueError):
-            errors.append(f"Field '{key}' must be a valid {caster.__name__}.")
+            errors.append(f"Field '{field}' must be numeric.")
             continue
 
-        min_val, max_val = INPUT_RANGES[key]
-        value = normalized[key]
-        if value < min_val or value > max_val:
-            errors.append(f"Field '{key}' out of range [{min_val}, {max_val}].")
+        min_value, max_value = INPUT_RANGES[field]
+        if normalized[field] < min_value or normalized[field] > max_value:
+            errors.append(
+                f"Field '{field}' must be between {min_value} and {max_value}."
+            )
 
     return normalized, errors
 
 
-def analyze_conditions(temp: float, hr: int, spo2: int, gsr: int) -> Tuple[List[str], List[str], int]:
-    """
-    Generate dynamic conditions and interventions from live values.
-    Also returns a deterministic stress percentage.
-    """
-    issues: List[str] = []
-    measures: List[str] = []
-    severity_points = 0
-
-    # Temperature analysis
-    if temp >= 40.0:
-        issues.append(f"Temperature critical at {temp:.1f}C (hyperpyrexia risk).")
-        measures.append("Urgent clinical evaluation and active cooling recommended.")
-        severity_points += 40
-    elif temp >= 38.0:
-        issues.append(f"Fever detected at {temp:.1f}C.")
-        measures.append("Hydrate, reduce exertion, and re-check temperature frequently.")
-        severity_points += 20
-    elif temp < 35.0:
-        issues.append(f"Temperature critically low at {temp:.1f}C (possible hypothermia).")
-        measures.append("Warm gradually and seek urgent medical support.")
-        severity_points += 40
-    elif temp < 36.0:
-        issues.append(f"Temperature below normal at {temp:.1f}C.")
-        measures.append("Keep warm and continue close monitoring.")
-        severity_points += 15
-
-    # Heart rate analysis
-    if hr >= 140:
-        issues.append(f"Heart rate critical at {hr} bpm.")
-        measures.append("Stop activity immediately and obtain urgent cardiac assessment.")
-        severity_points += 35
-    elif hr >= 110:
-        issues.append(f"Heart rate elevated at {hr} bpm.")
-        measures.append("Rest in seated position and practice paced breathing.")
-        severity_points += 18
-    elif hr < 45:
-        issues.append(f"Heart rate critically low at {hr} bpm.")
-        measures.append("Assess for dizziness/syncope and seek immediate care.")
-        severity_points += 35
-    elif hr < 55:
-        issues.append(f"Heart rate below expected resting range at {hr} bpm.")
-        measures.append("Repeat measurement at rest and monitor symptoms.")
-        severity_points += 12
-
-    # SpO2 analysis
-    if spo2 < 88:
-        issues.append(f"SpO2 critical at {spo2}%.")
-        measures.append("Emergency oxygen evaluation is recommended immediately.")
-        severity_points += 45
-    elif spo2 < 92:
-        issues.append(f"SpO2 low at {spo2}%.")
-        measures.append("Limit activity and seek same-day clinical assessment.")
-        severity_points += 28
-    elif spo2 < 95:
-        issues.append(f"SpO2 mildly reduced at {spo2}%.")
-        measures.append("Perform deep breathing and recheck sensor placement.")
-        severity_points += 12
-
-    # GSR stress analysis
-    if gsr >= 3000:
-        issues.append(f"GSR indicates extreme stress activation ({gsr}).")
-        measures.append("Pause workload immediately and begin guided calming protocol.")
-        severity_points += 30
-    elif gsr >= 2200:
-        issues.append(f"GSR indicates high stress activation ({gsr}).")
-        measures.append("Use 2-5 minutes of breathing exercises and reduce stimuli.")
-        severity_points += 18
-    elif gsr >= 1600:
-        issues.append(f"GSR indicates moderate stress activation ({gsr}).")
-        measures.append("Take a brief recovery break and hydrate.")
-        severity_points += 10
-
-    # Combine concurrent conditions into one deterministic explanation.
-    if len(issues) > 1:
-        issues.append(f"Combined concern: {len(issues)} concurrent physiological deviations detected.")
-        measures.append("Prioritize the most severe issue first, then re-measure all sensors within 5 minutes.")
-        severity_points += 8
-    elif not issues:
-        issues.append("All monitored parameters are currently within expected range.")
-        measures.append("Continue routine monitoring.")
-
-    # Deterministic stress score from severity + GSR component.
-    gsr_component = min(35, max(0, int(round((gsr / 5000) * 35))))
-    stress_percent = min(100, max(0, severity_points + gsr_component))
-    return issues, measures, stress_percent
+@app.route("/", methods=["GET"])
+def index():
+    """Simple health check endpoint."""
+    return "API is running", 200
 
 
-def safety_override(temp: float, hr: int, spo2: int, current_level: str) -> str:
-    """
-    Safety-first deterministic override:
-    critical physiological red flags supersede model class.
-    """
-    critical = temp >= 40.0 or temp < 35.0 or hr >= 140 or hr < 45 or spo2 < 88
-    high_risk = temp >= 38.5 or hr >= 120 or spo2 < 92
+@app.route("/api/data", methods=["POST"])
+def api_data():
+    """Store patient data after processing."""
+    payload = request.get_json(silent=True)
+    if not payload or 'id' not in payload:
+        return jsonify({"error": "Missing id"}), 400
 
-    if critical:
-        return "Critical"
-    if high_risk and str(current_level).lower() == "normal":
-        return "High"
-    return str(current_level)
+    id = str(payload['id'])
+    values, errors = validate_input(payload)
+
+    if errors:
+        return jsonify({"error": "ValidationError", "details": errors}), 400
+
+    feature_vector = [values[field] for field in FEATURE_ORDER]
+
+    try:
+        model_pred = model.predict([feature_vector])[0]
+    except Exception as err:
+        return jsonify({"error": "PredictionError", "details": str(err)}), 500
+
+    prediction = safety_override(
+        values["temperature"],
+        values["heartRate"],
+        values["spo2"],
+        str(model_pred),
+    )
+    recommendation = get_solution(prediction)
+    stress, issues, measures = analyze_conditions(
+        values["temperature"],
+        values["heartRate"],
+        values["spo2"],
+        values["gsr"],
+    )
+
+    patient_data = {
+        "id": id,
+        "name": f"Patient {id}",
+        "temperature": values["temperature"],
+        "heartRate": values["heartRate"],
+        "spo2": values["spo2"],
+        "gsr": values["gsr"],
+        "stress": stress,
+        "status": prediction,
+        "issues": issues,
+        "measures": measures,
+        "recommendation": recommendation,
+        "timestamp": "2026-05-10T14:30:00"
+    }
+
+    patients[id] = patient_data
+    return jsonify({"message": "Data stored"}), 200
 
 
-@app.route("/health", methods=["GET"])
-def health():
-    """Simple readiness probe for Node.js backend integration."""
-    return jsonify({"status": "ok", "modelLoaded": True, "features": MODEL_FEATURES})
+@app.route("/api/all-patients", methods=["GET"])
+def all_patients():
+    """Return all stored patients."""
+    return jsonify({"patients": list(patients.values())}), 200
 
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    """Prediction endpoint for real-time sensor payload."""
+    """Predict condition based on smart glove sensor data."""
     payload = request.get_json(silent=True)
-    values, errors = validate_and_normalize(payload)
+    values, errors = validate_input(payload)
+
     if errors:
         return jsonify({"error": "ValidationError", "details": errors}), 400
 
-    temp = values["temperature"]
-    hr = values["heartRate"]
-    spo2 = values["spo2"]
-    gsr = values["gsr"]
+    feature_vector = [values[field] for field in FEATURE_ORDER]
 
     try:
-        # Build DataFrame with exact feature names expected by model.
-        model_input = pd.DataFrame([[temp, hr, spo2, gsr]], columns=MODEL_FEATURES)
-        model_pred = model.predict(model_input)[0]
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": "PredictionError", "details": str(exc)}), 500
+        model_pred = model.predict([feature_vector])[0]
+    except Exception as err:
+        return jsonify({"error": "PredictionError", "details": str(err)}), 500
 
-    issues, measures, stress = analyze_conditions(temp, hr, spo2, gsr)
-    final_level = safety_override(temp, hr, spo2, str(model_pred))
-
-    response = {
-        "class": final_level,
+    prediction = safety_override(
+        values["temperature"],
+        values["heartRate"],
+        values["spo2"],
+        str(model_pred),
+    )
+    recommendation = get_solution(prediction)
+    stress, issues, measures = analyze_conditions(
+        values["temperature"],
+        values["heartRate"],
+        values["spo2"],
+        values["gsr"],
+    )
+    return jsonify({
+        "prediction": prediction,
+        "level": prediction,
+        "condition": recommendation.split(" - ")[0],
+        "recommendation": recommendation,
         "stress": stress,
-        "level": final_level,
         "issues": issues,
         "measures": measures,
-    }
-    return jsonify(response), 200
+    }), 200
 
 
 if __name__ == "__main__":
-    # Use debug=False for predictable production behavior.
-    app.run(host="0.0.0.0", port=5001, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=False)
+

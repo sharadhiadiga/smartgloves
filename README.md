@@ -8,16 +8,6 @@ SmartGloves is a comprehensive smart wearable health monitoring system that inte
 - **ml-model/**: Python-based machine learning service using Flask, scikit-learn, and pandas for health data analysis and predictions.
 - **mobile-app/**: React Native mobile application built with Expo, featuring TypeScript support and modern UI components.
 
-## Prerequisites
-
-Before running the project, ensure you have the following installed:
-
-- **Node.js** (>= 18.0.0)
-- **Python** (>= 3.8)
-- **MongoDB** (local or cloud instance)
-- **Expo CLI** (for mobile app development)
-- **Git** (for cloning the repository)
-
 ## Installation and Setup
 
 ### 1. Clone the Repository
@@ -108,6 +98,11 @@ This will open the Expo Developer Tools. You can then run the app on:
 - **Expo Go App**: Scan the QR code with the Expo Go app on your phone
 - **Web**: Press `w` in the terminal
 
+<<<<<<< HEAD
+## License
+
+This project is licensed under the MIT License.
+=======
 ## API Endpoints
 
 The backend provides the following main endpoints:
@@ -187,3 +182,4 @@ npx eas build --platform android
 This project is licensed under the MIT License.
 
 
+>>>>>>> c9f363aefc47923f6cbdb02b1defa9434ae10ab8
