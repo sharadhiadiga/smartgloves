@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: smartgloves-ml
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    rootDir: backend-node/ml-model
+    envVars: []
+    pythonVersion: 3.11.9
