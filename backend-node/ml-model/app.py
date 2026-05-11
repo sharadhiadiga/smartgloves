@@ -133,7 +133,9 @@ def validate_input(payload: Any) -> Tuple[Dict[str, float], List[str]]:
             )
 
     return normalized, errors
-
+@app.route("/health", methods=["GET"])
+def health():
+    return {"status": "ok"}
 
 @app.route("/", methods=["GET"])
 def index():
