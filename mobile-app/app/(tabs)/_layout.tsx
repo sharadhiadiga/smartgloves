@@ -11,15 +11,25 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="bluetooth"
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
         tabBarButton: HapticTab,
       }}>
       <Tabs.Screen
+        name="bluetooth"
+        options={{
+          title: 'Bluetooth',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="dot.radiowaves.left.and.right" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Dashboard',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
         }}
       />

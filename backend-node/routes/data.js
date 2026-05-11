@@ -95,6 +95,7 @@ function validateSensorData(data) {
 
 // POST /api/data
 router.post('/data', async (req, res) => {
+  console.log('[API INPUT]', req.body);
   console.log('[DATA][INCOMING]', req.body);
 
   const {
@@ -184,9 +185,11 @@ router.post('/data', async (req, res) => {
   };
 
   console.log('[DATA][ML_RESULT]', { mlSource, prediction: mlPrediction });
+  console.log('[ML RESPONSE]', mlPrediction);
 
   try {
     const savedEntry = await SmartGlove.create(result);
+    console.log('[DB SAVED]', savedEntry);
     console.log('[DATA][MONGODB_SAVE]', JSON.stringify({ id: String(savedEntry._id), patientId: savedEntry.patientId }));
     history.push(savedEntry);
     const responsePayload = { message: 'Data stored', prediction: mlPrediction, data: savedEntry, source: mlSource };
