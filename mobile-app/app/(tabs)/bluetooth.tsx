@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import type { Permission } from 'react-native';
 import type { Device } from 'react-native-ble-plx';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -35,7 +36,7 @@ type ConnectionStatus =
 async function requestBlePermissions(): Promise<PermissionState> {
   if (Platform.OS !== 'android') return 'granted';
 
-  const permissions: string[] = [];
+  const permissions: Permission[] = [];
   if (Platform.Version >= 31) {
     permissions.push(
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
@@ -47,7 +48,9 @@ async function requestBlePermissions(): Promise<PermissionState> {
   }
 
   const result = await PermissionsAndroid.requestMultiple(permissions);
-  const granted = permissions.every((perm) => result[perm] === PermissionsAndroid.RESULTS.GRANTED);
+  const granted = permissions.every(
+    (perm) => result[perm] === PermissionsAndroid.RESULTS.GRANTED
+  );
   return granted ? 'granted' : 'denied';
 }
 
