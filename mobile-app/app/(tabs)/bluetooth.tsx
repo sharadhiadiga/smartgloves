@@ -135,6 +135,7 @@ export default function BluetoothScreen() {
 
   const postToBackend = useCallback(async (packet: BleSensorPacket) => {
     try {
+      console.log('[FETCH START] Posting data to:', POST_DATA_ENDPOINT);
       const resp = await fetch(POST_DATA_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -144,10 +145,10 @@ export default function BluetoothScreen() {
         const text = await resp.text();
         throw new Error(`POST /api/data failed (${resp.status}): ${text}`);
       }
-      console.log('POST SUCCESS');
+      console.log('[FETCH SUCCESS] POST to backend successful');
       setPostCount((n) => n + 1);
     } catch (error: any) {
-      console.log('POST ERROR:', error?.message ?? error);
+      console.log('[FETCH FAILED] POST ERROR:', error?.message ?? error);
       setErrorMessage(error?.message ?? 'POST failed');
     }
   }, []);

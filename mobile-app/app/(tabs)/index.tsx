@@ -123,7 +123,7 @@ export default function App() {
         if (firstLoadRef.current) {
           setLoading(true);
         }
-        console.log('Fetching from:', API_ENDPOINT);
+        console.log('[FETCH START] Fetching patients from:', API_ENDPOINT);
 
         const response = await fetch(API_ENDPOINT, {
           method: 'GET',
@@ -139,8 +139,7 @@ export default function App() {
         }
 
         const json = (await response.json()) as ApiResponse | Array<RawPatient>;
-        console.log('Live API Response keys:', Array.isArray(json) ? 'array' : Object.keys(json || {}));
-        console.log('Live API Response:', JSON.stringify(json).slice(0, 2000));
+        console.log('[FETCH SUCCESS] Fetched patients:', Array.isArray(json) ? json.length : 'object');
 
         void fetch(API_HEALTH_ENDPOINT, {
           method: 'GET',
@@ -164,7 +163,7 @@ export default function App() {
         if (err.name === 'AbortError') {
           return;
         }
-        console.log('Fetch error:', err);
+        console.log('[FETCH FAILED] Fetch error:', err);
         setRetryCount((current) => current + 1);
         setOffline(true);
         const hint =
