@@ -3,9 +3,10 @@ import React, { useEffect } from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
 import {
+  consumeInitialNotification,
   registerForPushNotifications,
   setupNotificationListeners,
-} from '@/services/pushNotifications';
+} from '@/services/notificationService';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -16,13 +17,12 @@ export default function TabLayout() {
 
   useEffect(() => {
     void registerForPushNotifications().catch((err) => {
-      console.error('[Push] Registration failed:', err);
+      console.error('[Notify] Registration failed:', err);
     });
 
-    const cleanup = setupNotificationListeners((patientId) => {
-      console.log('[Push] Navigate to patient', patientId);
-      router.push(`/patient/${patientId}`);
-    });
+    void consumeInitialNotification(router);
+
+    const cleanup = setupNotificationListeners(router);
 
     return cleanup;
   }, [router]);

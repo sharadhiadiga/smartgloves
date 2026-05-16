@@ -38,7 +38,10 @@ async function sendNotification(patient, doctor) {
     data: {
       patientId: String(patientId),
       status: 'CRITICAL',
+      screen: 'Dashboard',
     },
+    categoryId: 'CRITICAL_ALERT',
+    channelId: 'critical-alerts',
   };
 
   console.log('[NOTIFY] Sending Expo push to doctor', doctor.userId || doctor._id, payload);
