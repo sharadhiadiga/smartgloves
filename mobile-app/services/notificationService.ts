@@ -1,3 +1,7 @@
+/**
+ * Remote push notifications via Expo Push Service (works when app is closed/background).
+ * Do NOT use scheduleNotificationAsync — backend sends via https://exp.host/--/api/v2/push/send
+ */
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
@@ -6,35 +10,31 @@ import type { Router } from 'expo-router';
 
 import { getApiBaseUrl } from '@/constants/api';
 
-export const CRITICAL_CHANNEL_ID = 'critical-alerts';
-export const CRITICAL_CATEGORY_ID = 'CRITICAL_ALERT';
+/** Android channel for remote pushes (must match backend channelId). */
+export const ANDROID_PUSH_CHANNEL_ID = 'default';
 
+export const CRITICAL_CATEGORY_ID = 'CRITICAL_ALERT';
 export const VIEW_ACTION_ID = 'VIEW_ACTION';
 export const DISMISS_ACTION_ID = 'DISMISS_ACTION';
 
-const DEFAULT_DOCTOR_ID = process.env.EXPO_PUBLIC_DOCTOR_ID?.trim() || 'doctor-default';
-const DISMISS_COOLDOWN_MS = Number(process.env.EXPO_PUBLIC_ALERT_DISMISS_COOLDOWN_MS) || 5 * 60 * 1000;
+/** Default doctor account for token registration — must match a doctor receiving alerts. */
+export const DEFAULT_DOCTOR_USER_ID =
+  process.env.EXPO_PUBLIC_DOCTOR_ID?.trim() || 'doctor1';
 
 export type CriticalNotificationData = {
-  patientId: string;
-  screen: 'Dashboard';
+  patientId?: string;
+  screen?: 'Dashboard';
   status?: 'CRITICAL';
 };
 
-export type CriticalPatient = {
-  id: string;
-  name: string;
-};
-
-const dismissedUntil = new Map<string, number>();
-const lastPatientStatus = new Map<string, string>();
 let storedPushToken: string | null = null;
 
+/** Global handler — show system alert/sound when a remote push arrives in foreground. */
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: true,
+    shouldSetBadge: false,
     shouldShowBanner: true,
     shouldShowList: true,
   }),
@@ -44,36 +44,19 @@ export function getStoredPushToken(): string | null {
   return storedPushToken;
 }
 
-export function markAlertDismissed(patientId: string): void {
-  dismissedUntil.set(patientId, Date.now() + DISMISS_COOLDOWN_MS);
-  console.log('[Notify] Alert dismissed for', patientId, 'until cooldown ends');
-}
-
-export function shouldSuppressCriticalAlert(patientId: string): boolean {
-  const until = dismissedUntil.get(patientId);
-  if (!until) return false;
-  if (Date.now() >= until) {
-    dismissedUntil.delete(patientId);
-    return false;
-  }
-  return true;
-}
-
 async function configureAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
 
-  await Notifications.setNotificationChannelAsync(CRITICAL_CHANNEL_ID, {
-    name: 'Critical Alerts',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 300, 200, 300],
-    lightColor: '#DC2626',
+  await Notifications.setNotificationChannelAsync(ANDROID_PUSH_CHANNEL_ID, {
+    name: 'default',
+    importance: Notifications.AndroidImportance.HIGH,
     sound: 'default',
+    vibrationPattern: [0, 250, 250, 250],
     enableVibrate: true,
-    bypassDnd: true,
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
   });
 
-  console.log('[Notify] Android channel configured:', CRITICAL_CHANNEL_ID);
+  console.log('[Push] Android channel ready:', ANDROID_PUSH_CHANNEL_ID);
 }
 
 async function configureNotificationCategories(): Promise<void> {
@@ -81,25 +64,19 @@ async function configureNotificationCategories(): Promise<void> {
     {
       identifier: VIEW_ACTION_ID,
       buttonTitle: 'View',
-      options: {
-        opensAppToForeground: true,
-      },
+      options: { opensAppToForeground: true },
     },
     {
       identifier: DISMISS_ACTION_ID,
       buttonTitle: 'Dismiss',
-      options: {
-        isDestructive: true,
-      },
+      options: { isDestructive: true },
     },
   ]);
-
-  console.log('[Notify] Category configured with View / Dismiss actions');
 }
 
 async function savePushTokenToBackend(userId: string, token: string): Promise<void> {
   const url = `${getApiBaseUrl()}/api/save-token`;
-  console.log('[Notify] Saving push token to backend', url);
+  console.log('[Push] POST save-token →', url, 'userId=', userId);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -112,20 +89,22 @@ async function savePushTokenToBackend(userId: string, token: string): Promise<vo
     throw new Error(text || `save-token failed (${response.status})`);
   }
 
-  console.log('[Notify] Push token saved on backend');
+  const json = await response.json();
+  console.log('[Push] Token stored on backend:', json);
 }
 
 /**
- * Request permissions, configure channels/categories, register Expo push token.
+ * Request permission, get Expo push token, register with backend.
+ * Requires EAS dev build + physical device (not Expo Go for production push).
  */
 export async function registerForPushNotifications(): Promise<string | null> {
-  console.log('[Notify] registerForPushNotifications start');
+  console.log('[Push] registerForPushNotifications start');
 
-  await configureNotificationCategories();
   await configureAndroidChannel();
+  await configureNotificationCategories();
 
   if (!Device.isDevice) {
-    console.log('[Notify] Push requires a physical device');
+    console.log('[Push] Physical device required for push token');
     return null;
   }
 
@@ -133,18 +112,12 @@ export async function registerForPushNotifications(): Promise<string | null> {
   let finalStatus = existingStatus;
 
   if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync({
-      ios: {
-        allowAlert: true,
-        allowBadge: true,
-        allowSound: true,
-      },
-    });
+    const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
 
   if (finalStatus !== 'granted') {
-    console.log('[Notify] Permission denied:', finalStatus);
+    console.log('[Push] Permission denied');
     return null;
   }
 
@@ -152,109 +125,54 @@ export async function registerForPushNotifications(): Promise<string | null> {
     Constants.expoConfig?.extra?.eas?.projectId ??
     (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
 
-  const tokenResponse = await Notifications.getExpoPushTokenAsync(
+  if (!projectId) {
+    console.warn('[Push] Missing EAS projectId in app.json extra.eas — token may fail');
+  }
+
+  const tokenResult = await Notifications.getExpoPushTokenAsync(
     projectId ? { projectId } : undefined
   );
-  const token = tokenResponse.data;
+  const token = tokenResult.data;
   storedPushToken = token;
 
-  console.log('[Notify] Expo push token:', token);
+  console.log('PUSH TOKEN:', token);
 
-  try {
-    await savePushTokenToBackend(DEFAULT_DOCTOR_ID, token);
-  } catch (err) {
-    console.log('[Notify] Backend token save failed (local alerts still work):', err);
-  }
+  await savePushTokenToBackend(DEFAULT_DOCTOR_USER_ID, token);
 
   return token;
 }
 
-/**
- * Schedule a device notification (lock screen, sound, vibration).
- */
-export async function sendLocalNotification(patient: CriticalPatient): Promise<string | null> {
-  if (shouldSuppressCriticalAlert(patient.id)) {
-    console.log('[Notify] Suppressed — user dismissed recently:', patient.id);
-    return null;
+export function handleNotificationNavigation(router: Router, data?: CriticalNotificationData): void {
+  console.log('[Push] handleNotificationNavigation', data);
+
+  if (data?.screen === 'Dashboard' || data?.patientId) {
+    router.push('/(tabs)');
+    return;
   }
-
-  const data: CriticalNotificationData = {
-    patientId: patient.id,
-    screen: 'Dashboard',
-    status: 'CRITICAL',
-  };
-
-  console.log('[Notify] Scheduling local CRITICAL alert for', patient.id);
-
-  const notificationId = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: '🚨 Critical Alert',
-      body: `Patient ${patient.name} (ID: ${patient.id}) is CRITICAL`,
-      data,
-      sound: 'default',
-      categoryIdentifier: CRITICAL_CATEGORY_ID,
-      ...(Platform.OS === 'android' && {
-        channelId: CRITICAL_CHANNEL_ID,
-        priority: Notifications.AndroidNotificationPriority.MAX,
-        vibrate: [0, 300, 200, 300],
-      }),
-    },
-    trigger: null,
-  });
-
-  console.log('[Notify] Local notification scheduled:', notificationId);
-  return notificationId;
-}
-
-/**
- * Fire alert when status transitions into Critical (not on every poll).
- */
-export async function notifyCriticalIfTransition(patient: CriticalPatient & { status: string }): Promise<void> {
-  const normalized = patient.status.trim().toLowerCase();
-  const previous = lastPatientStatus.get(patient.id);
-  lastPatientStatus.set(patient.id, normalized);
-
-  if (normalized !== 'critical') return;
-  if (previous === 'critical') return;
-
-  console.log('[Notify] CRITICAL transition detected for', patient.id);
-  await sendLocalNotification({ id: patient.id, name: patient.name });
-}
-
-export function handleNotificationNavigation(router: Router, patientId?: string): void {
-  console.log('[Notify] Navigate to Dashboard', patientId ? `patientId=${patientId}` : '');
 
   router.push('/(tabs)');
 }
 
-function getPatientIdFromResponse(
+function readNotificationData(
   response: Notifications.NotificationResponse
-): string | undefined {
-  const data = response.notification.request.content.data as Partial<CriticalNotificationData>;
-  return typeof data?.patientId === 'string' ? data.patientId : undefined;
+): CriticalNotificationData {
+  return (response.notification.request.content.data ?? {}) as CriticalNotificationData;
 }
 
-/**
- * Handle tap / View / Dismiss actions.
- */
 export async function handleNotificationResponse(
   response: Notifications.NotificationResponse,
   router: Router
 ): Promise<void> {
   const actionId = response.actionIdentifier;
-  const patientId = getPatientIdFromResponse(response);
-  const notificationId = response.notification.request.identifier;
+  const data = readNotificationData(response);
 
-  console.log('[Notify] Response received — action:', actionId, 'patientId:', patientId);
+  console.log('[Push] Notification response — action:', actionId, 'data:', data);
 
   if (actionId === DISMISS_ACTION_ID) {
-    if (patientId) {
-      markAlertDismissed(patientId);
-    }
+    const notificationId = response.notification.request.identifier;
     if (notificationId) {
       await Notifications.dismissNotificationAsync(notificationId);
     }
-    console.log('[Notify] Dismissed by user — will not re-alert during cooldown');
     return;
   }
 
@@ -262,17 +180,14 @@ export async function handleNotificationResponse(
     actionId === VIEW_ACTION_ID ||
     actionId === Notifications.DEFAULT_ACTION_IDENTIFIER
   ) {
-    handleNotificationNavigation(router, patientId);
+    handleNotificationNavigation(router, data);
   }
 }
 
-/**
- * Register foreground + interaction listeners (no in-app Alert).
- */
 export function setupNotificationListeners(router: Router): () => void {
   const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
     console.log(
-      '[Notify] Notification received (system tray):',
+      '[Push] Remote notification received:',
       notification.request.content.title,
       notification.request.content.body
     );
@@ -288,13 +203,10 @@ export function setupNotificationListeners(router: Router): () => void {
   };
 }
 
-/**
- * Handle app opened from killed state via notification.
- */
 export async function consumeInitialNotification(router: Router): Promise<void> {
   const response = await Notifications.getLastNotificationResponseAsync();
   if (!response) return;
 
-  console.log('[Notify] App opened from notification (cold start)');
+  console.log('[Push] App opened from notification (cold start)');
   await handleNotificationResponse(response, router);
 }
