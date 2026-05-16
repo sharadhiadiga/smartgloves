@@ -15,8 +15,6 @@ import { getApiBaseUrl } from '@/constants/api';
 import { useBleDashboard } from '@/hooks/useBleDashboard';
 import type { PostSensorResponse } from '@/services/apiService';
 import type { BleSensorPacket } from '@/services/bleService';
-import { notifyCriticalIfTransition } from '@/services/notificationService';
-
 type PatientStatusFilter = 'All' | 'Critical' | 'High' | 'Moderate' | 'Low';
 const STATUS_FILTERS: PatientStatusFilter[] = ['All', 'Critical', 'High', 'Moderate', 'Low'];
 
@@ -147,16 +145,6 @@ export default function DashboardScreen() {
   const previousPatientIds = useRef<string[]>([]);
   const fetchPatientsRef = useRef<((signal?: AbortSignal) => Promise<void>) | null>(null);
 
-  const triggerCriticalNotification = useCallback((patient: Patient) => {
-    void notifyCriticalIfTransition({
-      id: patient.id,
-      name: patient.name,
-      status: patient.status,
-    }).catch((err) => {
-      console.log('[Dashboard] Critical notification error:', err);
-    });
-  }, []);
-
   const mergePatient = useCallback((incoming: Patient) => {
     setPatients((prev) => {
       const idx = prev.findIndex((p) => p.id === incoming.id);
@@ -167,10 +155,7 @@ export default function DashboardScreen() {
       }
       return [incoming, ...prev];
     });
-    if (incoming.status === 'Critical') {
-      triggerCriticalNotification(incoming);
-    }
-  }, [triggerCriticalNotification]);
+  }, []);
 
   const handleBackendResponse = useCallback(
     (packet: BleSensorPacket, response: PostSensorResponse) => {
@@ -223,16 +208,6 @@ export default function DashboardScreen() {
 
       const normalized = payload.map(rawToPatient).filter((p) => p.id !== 'unknown-id');
       setPatients(normalized);
-
-      for (const p of normalized) {
-        if (p.status === 'Critical') {
-          void notifyCriticalIfTransition({
-            id: p.id,
-            name: p.name,
-            status: p.status,
-          });
-        }
-      }
 
       setLastUpdated(new Date().toISOString());
       setRetryCount(0);

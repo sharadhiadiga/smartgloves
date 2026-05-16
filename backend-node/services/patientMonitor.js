@@ -26,8 +26,8 @@ async function handlePatientStatusUpdate({ patientId, name, currentStatus }) {
   if (!patientDoc) {
     console.log('[MONITOR] New patient record', key, 'status=', normalizedCurrent);
   }
-  const shouldAlert =
-    previousStatus !== 'CRITICAL' && normalizedCurrent === 'CRITICAL';
+  const isCritical = normalizedCurrent === 'CRITICAL';
+  const shouldAlert = previousStatus !== 'CRITICAL' && isCritical;
 
   console.log('[MONITOR] Status check', {
     patientId: key,
@@ -39,16 +39,18 @@ async function handlePatientStatusUpdate({ patientId, name, currentStatus }) {
   let alerted = false;
   const isNewPatient = !patientDoc;
 
-  if (shouldAlert) {
+  if (isCritical && shouldAlert) {
     if (patientDoc && isWithinCooldown(patientDoc.lastAlertTime)) {
-      console.log('[MONITOR] Cooldown active — alert suppressed for', key);
+      console.log('[MONITOR] Cooldown active — push suppressed for', key);
     } else {
       const alertPatient = {
         patientId: key,
+        id: key,
         name: name || patientDoc?.name || key,
         _id: key,
       };
 
+      console.log('[MONITOR] status === CRITICAL — sendPushNotification');
       const notifyResults = await notifyDoctors(alertPatient);
       alerted = notifyResults.some((r) => r.sent);
 
