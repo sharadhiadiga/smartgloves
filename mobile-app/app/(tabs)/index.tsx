@@ -15,7 +15,6 @@ import { getApiBaseUrl } from '@/constants/api';
 import { useBleDashboard } from '@/hooks/useBleDashboard';
 import type { PostSensorResponse } from '@/services/apiService';
 import type { BleSensorPacket } from '@/services/bleService';
-import { ensurePushTokenOnBackend } from '@/services/notificationService';
 type PatientStatusFilter = 'All' | 'Critical' | 'High' | 'Moderate' | 'Low';
 const STATUS_FILTERS: PatientStatusFilter[] = ['All', 'Critical', 'High', 'Moderate', 'Low'];
 
@@ -238,12 +237,6 @@ export default function DashboardScreen() {
   }, [ble.livePacket]);
 
   fetchPatientsRef.current = fetchPatients;
-
-  useEffect(() => {
-    void ensurePushTokenOnBackend().catch((err) => {
-      console.log('[Dashboard] Push token sync:', err);
-    });
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();

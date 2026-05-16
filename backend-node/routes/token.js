@@ -32,8 +32,10 @@ router.post('/save-token', async (req, res) => {
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
       console.log('✅ Token saved in DB:', user);
+      console.log('✅ Token saved:', trimmedUserId, trimmedToken.slice(0, 40) + '...');
     } else {
       console.warn('⚠️ MongoDB not connected — token saved in memory only');
+      console.log('✅ Token saved (memory only):', trimmedUserId);
     }
 
     res.json({

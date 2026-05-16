@@ -75,6 +75,7 @@ async function savePushTokenToBackend(userId: string, token: string): Promise<vo
     throw new Error(json.error || text || `save-token failed (${response.status})`);
   }
 
+  console.log('✅ Token saved on backend:', json);
   console.log('[Push] Backend save-token response:', json);
 }
 
@@ -82,7 +83,8 @@ async function savePushTokenToBackend(userId: string, token: string): Promise<vo
  * Get Expo push token and register with backend (required for closed-app notifications).
  */
 export async function registerForPushNotifications(): Promise<string | null> {
-  console.log('[Push] registerForPushNotifications');
+  const apiBase = getApiBaseUrl();
+  console.log('[Push] registerForPushNotifications — API:', apiBase, 'userId:', DEFAULT_DOCTOR_USER_ID);
 
   await configureAndroidChannel();
 
@@ -90,6 +92,8 @@ export async function registerForPushNotifications(): Promise<string | null> {
     console.log('[Push] Use a physical device + EAS build (not Expo Go)');
     return null;
   }
+
+  console.log('📲 Requesting permissions...');
 
   const { status: existing } = await Notifications.getPermissionsAsync();
   let status = existing;
@@ -100,29 +104,29 @@ export async function registerForPushNotifications(): Promise<string | null> {
   }
 
   if (status !== 'granted') {
-    console.log('[Push] Permission denied');
+    console.log('[Push] Permission denied:', status);
     return null;
   }
+
+  console.log('[Push] Permission granted');
 
   const projectId =
     Constants.expoConfig?.extra?.eas?.projectId ??
     (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
+
+  if (!projectId) {
+    console.warn('[Push] Missing EAS projectId in app.json — push token may fail');
+  }
 
   const token = (
     await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined)
   ).data;
 
   storedPushToken = token;
-  console.log('🚀 PUSH TOKEN GENERATED:', token);
-  console.log('PUSH TOKEN:', token);
+  console.log('🔥 PUSH TOKEN:', token);
 
-  try {
-    await savePushTokenToBackend(DEFAULT_DOCTOR_USER_ID, token);
-    console.log('[Push] Token registered for userId:', DEFAULT_DOCTOR_USER_ID);
-  } catch (err) {
-    console.error('[Push] Failed to save token to backend:', err);
-    throw err;
-  }
+  await savePushTokenToBackend(DEFAULT_DOCTOR_USER_ID, token);
+  console.log('[Push] Token registered for userId:', DEFAULT_DOCTOR_USER_ID);
 
   return token;
 }
