@@ -53,6 +53,7 @@ async function configureAndroidChannel(): Promise<void> {
 
 async function savePushTokenToBackend(userId: string, token: string): Promise<void> {
   const url = `${getApiBaseUrl()}/api/save-token`;
+  console.log('📡 Sending token to backend:', token);
   console.log('[Push] POST', url, { userId });
 
   const response = await fetch(url, {
@@ -61,12 +62,20 @@ async function savePushTokenToBackend(userId: string, token: string): Promise<vo
     body: JSON.stringify({ userId, token }),
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `save-token failed (${response.status})`);
+  const text = await response.text();
+  let json: { success?: boolean; user?: unknown; error?: string } = {};
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    json = { error: text };
   }
 
-  console.log('[Push] Token saved on backend for', userId);
+  if (!response.ok) {
+    console.error('[Push] save-token failed:', response.status, json);
+    throw new Error(json.error || text || `save-token failed (${response.status})`);
+  }
+
+  console.log('[Push] Backend save-token response:', json);
 }
 
 /**
@@ -104,11 +113,28 @@ export async function registerForPushNotifications(): Promise<string | null> {
   ).data;
 
   storedPushToken = token;
+  console.log('🚀 PUSH TOKEN GENERATED:', token);
   console.log('PUSH TOKEN:', token);
 
-  await savePushTokenToBackend(DEFAULT_DOCTOR_USER_ID, token);
+  try {
+    await savePushTokenToBackend(DEFAULT_DOCTOR_USER_ID, token);
+    console.log('[Push] Token registered for userId:', DEFAULT_DOCTOR_USER_ID);
+  } catch (err) {
+    console.error('[Push] Failed to save token to backend:', err);
+    throw err;
+  }
 
   return token;
+}
+
+/** Re-send cached token to backend (e.g. after dashboard mount). */
+export async function ensurePushTokenOnBackend(): Promise<void> {
+  if (storedPushToken) {
+    console.log('[Push] Re-syncing token to backend...');
+    await savePushTokenToBackend(DEFAULT_DOCTOR_USER_ID, storedPushToken);
+    return;
+  }
+  await registerForPushNotifications();
 }
 
 export function handleNotificationNavigation(router: Router, data?: PushNotificationData): void {

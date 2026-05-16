@@ -22,6 +22,9 @@ function PushNotificationRoot() {
     void registerForPushNotifications().catch((err) => {
       console.error('[Push] Registration failed:', err);
     });
+  }, []);
+
+  useEffect(() => {
     void consumeInitialNotification(router);
     return setupNotificationListeners(router);
   }, [router]);

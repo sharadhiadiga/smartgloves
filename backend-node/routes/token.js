@@ -1,36 +1,77 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Doctor = require('../models/Doctor');
+const pushTokenStore = require('../services/pushTokenStore');
 
 const router = express.Router();
 
 // POST /api/save-token
 router.post('/save-token', async (req, res) => {
-  const { userId, token } = req.body;
-
-  console.log('[TOKEN] save-token request', { userId: userId ? String(userId) : null, hasToken: Boolean(token) });
-
-  if (!userId || typeof userId !== 'string' || userId.trim().length === 0) {
-    return res.status(400).json({ error: 'userId is required' });
-  }
-  if (!token || typeof token !== 'string' || token.trim().length === 0) {
-    return res.status(400).json({ error: 'token is required' });
-  }
-
   try {
-    const doctor = await Doctor.findOneAndUpdate(
-      { userId: userId.trim() },
-      { pushToken: token.trim() },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+    const { userId, token } = req.body;
 
-    console.log('[TOKEN] Saved push token for doctor', doctor.userId);
-    return res.json({
-      message: 'Push token saved',
-      userId: doctor.userId,
+    console.log('📥 Incoming token request:', req.body);
+
+    if (!userId || !token) {
+      return res.status(400).json({ error: 'userId and token required' });
+    }
+
+    const trimmedUserId = String(userId).trim();
+    const trimmedToken = String(token).trim();
+
+    // Always cache in memory (works even if MongoDB is down)
+    pushTokenStore.setToken(trimmedUserId, trimmedToken);
+
+    let user = null;
+    const mongoConnected = mongoose.connection.readyState === 1;
+
+    if (mongoConnected) {
+      user = await Doctor.findOneAndUpdate(
+        { userId: trimmedUserId },
+        { pushToken: trimmedToken, userId: trimmedUserId },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      console.log('✅ Token saved in DB:', user);
+    } else {
+      console.warn('⚠️ MongoDB not connected — token saved in memory only');
+    }
+
+    res.json({
+      success: true,
+      mongoConnected,
+      user,
+      memorySaved: true,
     });
-  } catch (error) {
-    console.error('[TOKEN] save-token error', error);
-    return res.status(500).json({ error: 'Failed to save push token' });
+  } catch (err) {
+    console.error('❌ Save-token error:', err);
+    res.status(500).json({ error: 'Failed to save token' });
+  }
+});
+
+// GET /api/push-status — debug token registration
+router.get('/push-status', async (req, res) => {
+  try {
+    const mongoConnected = mongoose.connection.readyState === 1;
+    let doctors = [];
+
+    if (mongoConnected) {
+      doctors = await Doctor.find({}, { userId: 1, pushToken: 1 }).lean();
+    }
+
+    const memory = pushTokenStore.getAllTokens();
+
+    res.json({
+      mongoConnected,
+      memoryTokenUsers: Object.keys(memory),
+      memoryTokenCount: Object.keys(memory).length,
+      doctors: doctors.map((d) => ({
+        userId: d.userId,
+        hasToken: Boolean(d.pushToken),
+        tokenPreview: d.pushToken ? `${d.pushToken.slice(0, 28)}...` : null,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
