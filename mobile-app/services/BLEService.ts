@@ -16,11 +16,11 @@ export const DEFAULT_PATIENT_ID =
   process.env.EXPO_PUBLIC_PATIENT_ID?.trim() || 'P001';
 
 export const BLE_SERVICE_UUID = (
-  process.env.EXPO_PUBLIC_BLE_SERVICE_UUID || '0000fff0-0000-1000-8000-00805f9b34fb'
+  process.env.EXPO_PUBLIC_BLE_SERVICE_UUID || '12345678-1234-1234-1234-123456789ABC'
 ).toLowerCase();
 
 export const BLE_CHAR_UUID = (
-  process.env.EXPO_PUBLIC_BLE_CHAR_UUID || '0000fff1-0000-1000-8000-00805f9b34fb'
+  process.env.EXPO_PUBLIC_BLE_CHAR_UUID || 'ABCD1234-5678-5678-5678-ABCDEF123456'
 ).toLowerCase();
 
 /** True on iOS/Android native; false on web (use mock / disabled UI). */
