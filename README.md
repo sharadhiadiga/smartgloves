@@ -98,6 +98,3 @@ This will open the Expo Developer Tools. You can then run the app on:
 - **Expo Go App**: Scan the QR code with the Expo Go app on your phone
 - **Web**: Press `w` in the terminal
 
-## License
-
-This project is licensed under the MIT License.
