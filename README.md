@@ -101,8 +101,3 @@ This will open the Expo Developer Tools. You can then run the app on:
 ## License
 
 This project is licensed under the MIT License.
-
-This project is licensed under the MIT License.
-
-
->>>>>>> c9f363aefc47923f6cbdb02b1defa9434ae10ab8
