@@ -1,8 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const SmartGlove = require('../models/SmartGlove');
+const Doctor = require('../models/Doctor');
 const { predictHealth } = require('../services/mlService');
 const { handlePatientStatusUpdate } = require('../services/patientMonitor');
+const { sendPushNotification } = require('../services/pushService');
+
+const DOCTOR_USER_ID = process.env.DOCTOR_USER_ID || 'doctor1';
+/** Set FORCE_CRITICAL_FOR_TESTING=false to use real ML severity */
+const FORCE_CRITICAL_FOR_TESTING = process.env.FORCE_CRITICAL_FOR_TESTING !== 'false';
+
+function normalizeStatusUpper(status) {
+  return String(status || '').trim().toUpperCase();
+}
+
+function isCriticalStatus(status) {
+  return normalizeStatusUpper(status) === 'CRITICAL';
+}
 
 let history = [];
 
@@ -96,6 +110,7 @@ function validateSensorData(data) {
 
 // POST /api/data
 router.post('/data', async (req, res) => {
+  console.log('📥 Incoming data:', req.body);
   console.log('[API INPUT]', req.body);
   console.log('[DATA][INCOMING]', req.body);
 
@@ -162,10 +177,18 @@ router.post('/data', async (req, res) => {
   }
 
   const level = String(mlPrediction?.level || mlPrediction?.status || 'Low');
-  const status = level;
   const severity = ['Critical', 'High', 'Moderate', 'Low'].includes(level)
     ? level
     : getSeverityFromStress(mlPrediction.stress || 0);
+
+  const mlStatus = normalizeStatusUpper(severity);
+  console.log('🧠 ML STATUS:', mlStatus);
+
+  // TEMPORARY TEST OVERRIDE — set FORCE_CRITICAL_FOR_TESTING=false to disable
+  const status = FORCE_CRITICAL_FOR_TESTING ? 'CRITICAL' : mlStatus;
+  if (FORCE_CRITICAL_FOR_TESTING) {
+    console.log('⚠️ FORCE_CRITICAL_FOR_TESTING enabled — effective status:', status);
+  }
 
   const result = {
     patientId: resolvedPatientId,
@@ -174,7 +197,7 @@ router.post('/data', async (req, res) => {
     heartRate,
     spo2,
     gsr,
-    status,
+    status: severity,
     severity,
     predictionLevel: level,
     stress: Number.isFinite(mlPrediction?.stress) ? mlPrediction.stress : 0,
@@ -188,10 +211,41 @@ router.post('/data', async (req, res) => {
   console.log('[DATA][ML_RESULT]', { mlSource, prediction: mlPrediction });
   console.log('[ML RESPONSE]', mlPrediction);
 
+  let pushResult = null;
+
   try {
     const savedEntry = await SmartGlove.create(result);
     console.log('[DB SAVED]', savedEntry);
     console.log('[DATA][MONGODB_SAVE]', JSON.stringify({ id: String(savedEntry._id), patientId: savedEntry.patientId }));
+
+    if (isCriticalStatus(status)) {
+      console.log('🚨 CRITICAL DETECTED');
+
+      try {
+        const user = await Doctor.findOne({ userId: DOCTOR_USER_ID });
+
+        if (!user || !user.pushToken) {
+          console.log('❌ No push token found for userId:', DOCTOR_USER_ID);
+        } else {
+          console.log('✅ Found token:', user.pushToken);
+
+          pushResult = await sendPushNotification(
+            {
+              patientId: resolvedPatientId,
+              name: result.name || resolvedPatientId,
+            },
+            user.pushToken
+          );
+        }
+      } catch (pushError) {
+        console.error('❌ PUSH ERROR:', pushError?.message || pushError);
+        if (pushError.response) {
+          console.error('❌ PUSH ERROR BODY:', JSON.stringify(pushError.response.data));
+        }
+      }
+    } else {
+      console.log('[PUSH] Skipped — status is not CRITICAL:', status);
+    }
 
     try {
       const monitorResult = await handlePatientStatusUpdate({
@@ -205,18 +259,49 @@ router.post('/data', async (req, res) => {
     }
 
     history.push(savedEntry);
-    const responsePayload = { message: 'Data stored', prediction: mlPrediction, data: savedEntry, source: mlSource };
-    console.log('[DATA][API_RESPONSE]', JSON.stringify({ source: mlSource, patientId: resolvedPatientId, severity }));
+    const responsePayload = {
+      success: true,
+      status,
+      mlStatus,
+      message: 'Data stored',
+      prediction: mlPrediction,
+      data: savedEntry,
+      source: mlSource,
+      push: pushResult,
+    };
+    console.log('[DATA][API_RESPONSE]', JSON.stringify({ success: true, status, patientId: resolvedPatientId }));
     return res.json(responsePayload);
   } catch (dbError) {
     console.error('[DATA][MONGODB_SAVE_ERROR]', dbError);
 
+    if (isCriticalStatus(status)) {
+      console.log('🚨 CRITICAL DETECTED (DB fallback path)');
+      try {
+        const user = await Doctor.findOne({ userId: DOCTOR_USER_ID });
+        if (user?.pushToken) {
+          console.log('✅ Found token:', user.pushToken);
+          pushResult = await sendPushNotification(
+            { patientId: resolvedPatientId, name: result.name || resolvedPatientId },
+            user.pushToken
+          );
+        } else {
+          console.log('❌ No push token found');
+        }
+      } catch (pushError) {
+        console.error('❌ PUSH ERROR:', pushError?.message || pushError);
+      }
+    }
+
     history.push(result);
     return res.json({
+      success: true,
+      status,
+      mlStatus,
       message: 'Data stored in fallback memory',
       prediction: mlPrediction,
       data: result,
       source: mlSource,
+      push: pushResult,
     });
   }
 });
