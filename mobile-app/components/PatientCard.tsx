@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 export type PatientStatus = 'Low' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
 
@@ -51,10 +52,18 @@ const formatValue = (value: number | null, suffix = '') => {
 };
 
 const PatientCard = React.memo(function PatientCard({ patient }: { patient: Patient }) {
+  const router = useRouter();
   const statusStyle = STATUS_STYLES[patient.status] ?? STATUS_STYLES.Unknown;
 
   return (
-    <View style={[styles.card, { borderColor: statusStyle.border, backgroundColor: statusStyle.background }]}> 
+    <Pressable
+      onPress={() => router.push(`/patient/${patient.id}`)}
+      style={({ pressed }) => [
+        styles.card,
+        { borderColor: statusStyle.border, backgroundColor: statusStyle.background },
+        pressed && styles.cardPressed,
+      ]}
+    >
       <View style={styles.header}>
         <View>
           <Text style={styles.name}>{patient.name}</Text>
@@ -117,11 +126,14 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
       </View>
 
       <Text style={styles.timestamp}>⏱ {patient.timestamp}</Text>
-    </View>
+    </Pressable>
   );
 });
 
 const styles = StyleSheet.create({
+  cardPressed: {
+    opacity: 0.92,
+  },
   card: {
     borderWidth: 1,
     borderRadius: 20,

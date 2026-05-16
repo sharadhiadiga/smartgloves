@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const SmartGlove = require('../models/SmartGlove');
 const { predictHealth } = require('../services/mlService');
+const { handlePatientStatusUpdate } = require('../services/patientMonitor');
 
 let history = [];
 
@@ -191,6 +192,18 @@ router.post('/data', async (req, res) => {
     const savedEntry = await SmartGlove.create(result);
     console.log('[DB SAVED]', savedEntry);
     console.log('[DATA][MONGODB_SAVE]', JSON.stringify({ id: String(savedEntry._id), patientId: savedEntry.patientId }));
+
+    try {
+      const monitorResult = await handlePatientStatusUpdate({
+        patientId: resolvedPatientId,
+        name: result.name,
+        currentStatus: severity,
+      });
+      console.log('[DATA][MONITOR]', monitorResult);
+    } catch (monitorError) {
+      console.error('[DATA][MONITOR_ERROR]', monitorError?.message || monitorError);
+    }
+
     history.push(savedEntry);
     const responsePayload = { message: 'Data stored', prediction: mlPrediction, data: savedEntry, source: mlSource };
     console.log('[DATA][API_RESPONSE]', JSON.stringify({ source: mlSource, patientId: resolvedPatientId, severity }));

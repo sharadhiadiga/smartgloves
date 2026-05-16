@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const BACKEND_PORT = 5000;
+const PRODUCTION_API_BASE = 'https://smartgloves-backend.onrender.com';
 
 /**
  * Derives LAN hostname from Expo (Metro) so physical devices reach the dev machine.
@@ -54,5 +55,5 @@ export function getApiBaseUrl(): string {
     return `http://10.0.2.2:${BACKEND_PORT}`;
   }
 
-  return `http://127.0.0.1:${BACKEND_PORT}`;
+  return PRODUCTION_API_BASE;
 }

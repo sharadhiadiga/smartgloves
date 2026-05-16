@@ -8,6 +8,7 @@ console.log('[ENV] MONGO_URI set:', Boolean(process.env.MONGO_URI));
 console.log('[ENV] ML_API_URL:', process.env.ML_API_URL || '(default http://127.0.0.1:5001/predict)');
 const connectDB = require('./config/db');
 const dataRouter = require('./routes/data');
+const tokenRouter = require('./routes/token');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -44,6 +45,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api', dataRouter);
+app.use('/api', tokenRouter);
 
 app.use((req, res) => {
   res.status(404).json({

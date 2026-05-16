@@ -25,7 +25,8 @@
         "BLUETOOTH_ADMIN",
         "BLUETOOTH_SCAN",
         "BLUETOOTH_CONNECT",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS"
       ],
       "package": "com.anonymous.mobileapp"
     },
@@ -35,6 +36,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#DC2626"
+        }
+      ],
       "expo-dev-client",
       [
         "expo-splash-screen",
