@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  SafeAreaView,
   Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,7 +15,7 @@ import BlePanel from '@/components/BlePanel';
 import { getApiBaseUrl } from '@/constants/api';
 import { useBleDashboard } from '@/hooks/useBleDashboard';
 import type { PostSensorResponse } from '@/services/apiService';
-import type { BleSensorPacket } from '@/services/bleService';
+import type { BleSensorPacket } from '@/services/BLEService';
 type PatientStatusFilter = 'All' | 'Critical' | 'High' | 'Moderate' | 'Low';
 const STATUS_FILTERS: PatientStatusFilter[] = ['All', 'Critical', 'High', 'Moderate', 'Low'];
 
@@ -140,9 +141,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [criticalBanner, setCriticalBanner] = useState<string | null>(null);
 
-  const listRef = useRef<FlatList<Patient> | null>(null);
   const firstLoadRef = useRef(true);
-  const previousPatientIds = useRef<string[]>([]);
   const fetchPatientsRef = useRef<((signal?: AbortSignal) => Promise<void>) | null>(null);
 
   const mergePatient = useCallback((incoming: Patient) => {
@@ -248,14 +247,6 @@ export default function DashboardScreen() {
     };
   }, [fetchPatients]);
 
-  useEffect(() => {
-    const ids = patients.map((p) => p.id);
-    if (previousPatientIds.current.length > 0 && ids.join(',') !== previousPatientIds.current.join(',')) {
-      listRef.current?.scrollToOffset({ offset: 0, animated: true });
-    }
-    previousPatientIds.current = ids;
-  }, [patients]);
-
   const filteredPatients = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return patients.filter((patient) => {
@@ -276,48 +267,57 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.screen}>
-        <View style={styles.bleSection}>
-          <Text style={styles.title}>Doctor Dashboard</Text>
-          <Text style={styles.subtitle}>ESP32 → BLE → Backend → ML → Live vitals</Text>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+        nestedScrollEnabled
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#7C3AED" />
+        }
+      >
+        <Text style={styles.title}>Doctor Dashboard</Text>
+        <Text style={styles.subtitle}>ESP32 → BLE → Backend → ML → Live vitals</Text>
 
-          {criticalBanner ? (
-            <View style={styles.criticalBanner}>
-              <Text style={styles.criticalBannerText}>🚨 {criticalBanner}</Text>
-              <Pressable onPress={() => setCriticalBanner(null)}>
-                <Text style={styles.dismissText}>Dismiss</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          <Text style={styles.networkInfo}>
-            Cloud: {offline ? 'Offline' : 'Connected'}
-            {lastUpdated ? ` · ${new Date(lastUpdated).toLocaleTimeString()}` : ''}
-            {ble.lastBackendAt ? ` · BLE POST ${new Date(ble.lastBackendAt).toLocaleTimeString()}` : ''}
-          </Text>
-          {retryCount > 0 && <Text style={styles.retryText}>API retries: {retryCount}</Text>}
-
-          <View style={styles.blePanelWrap}>
-            <BlePanel
-              bleSupported={ble.bleSupported}
-              isScanning={ble.isScanning}
-              connectionStatus={ble.connectionStatus}
-              connectedDevice={ble.connectedDevice}
-              devices={ble.devices}
-              livePacket={ble.livePacket}
-              lastRaw={ble.lastRaw}
-              bleError={ble.bleError}
-              postsSent={ble.postsSent}
-              bluetoothState={ble.bluetoothState}
-              onStartScan={() => void ble.startScan()}
-              onStopScan={ble.stopScan}
-              onConnect={(d) => void ble.connectToDevice(d)}
-              onDisconnect={() => void ble.disconnect()}
-            />
+        {criticalBanner ? (
+          <View style={styles.criticalBanner}>
+            <Text style={styles.criticalBannerText}>🚨 {criticalBanner}</Text>
+            <Pressable onPress={() => setCriticalBanner(null)}>
+              <Text style={styles.dismissText}>Dismiss</Text>
+            </Pressable>
           </View>
+        ) : null}
+
+        <Text style={styles.networkInfo}>
+          Cloud: {offline ? 'Offline' : 'Connected'}
+          {lastUpdated ? ` · ${new Date(lastUpdated).toLocaleTimeString()}` : ''}
+          {ble.lastBackendAt ? ` · BLE POST ${new Date(ble.lastBackendAt).toLocaleTimeString()}` : ''}
+        </Text>
+        {retryCount > 0 && <Text style={styles.retryText}>API retries: {retryCount}</Text>}
+
+        <View style={styles.bleSection}>
+          <BlePanel
+            bleSupported={ble.bleSupported}
+            isScanning={ble.isScanning}
+            connectionStatus={ble.connectionStatus}
+            connectedDevice={ble.connectedDevice}
+            devices={ble.devices}
+            livePacket={ble.livePacket}
+            lastRaw={ble.lastRaw}
+            bleError={ble.bleError}
+            postsSent={ble.postsSent}
+            bluetoothState={ble.bluetoothState}
+            onStartScan={() => void ble.startScan()}
+            onStopScan={ble.stopScan}
+            onConnect={(d) => void ble.connectToDevice(d)}
+            onDisconnect={() => void ble.disconnect()}
+          />
         </View>
 
-        <View style={styles.dashboardSection}>
+        <View style={styles.dashboardCard}>
+          <Text style={styles.dashboardTitle}>Patient Dashboard</Text>
+
           <View style={styles.searchContainer}>
             <TextInput
               value={searchQuery}
@@ -358,42 +358,50 @@ export default function DashboardScreen() {
 
           {error && !loading && (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>API issue</Text>
+              <Text style={styles.apiErrorTitle}>API issue</Text>
               <Text style={styles.errorDetail}>{error}</Text>
             </View>
           )}
 
-          <FlatList
-            ref={listRef}
-            data={filteredPatients}
-            renderItem={({ item }) => <PatientCard patient={item} />}
-            keyExtractor={(item) => item.id}
-            showsVerticalScrollIndicator
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            initialNumToRender={20}
-            maxToRenderPerBatch={20}
-            windowSize={10}
-            ListEmptyComponent={
-              !loading ? (
-                <Text style={styles.emptyText}>
-                  {error ? 'Waiting for cloud sync…' : 'No patients yet'}
-                </Text>
-              ) : null
-            }
-          />
+          {!loading &&
+            (filteredPatients.length === 0 ? (
+              <Text style={styles.emptyText}>{error ? 'Waiting for cloud sync…' : 'No patients yet'}</Text>
+            ) : (
+              filteredPatients.map((patient) => (
+                <View key={patient.id} style={styles.patientCardWrap}>
+                  <PatientCard patient={patient} />
+                </View>
+              ))
+            ))}
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#020617' },
-  screen: { flex: 1, paddingHorizontal: 18, paddingTop: 18 },
-  bleSection: { flex: 1, overflow: 'hidden' },
-  blePanelWrap: { flex: 1, overflow: 'hidden' },
-  dashboardSection: { height: 300, overflow: 'hidden' },
+  scrollView: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 100,
+    flexGrow: 1,
+  },
+  bleSection: { marginTop: 12 },
+  dashboardCard: {
+    marginTop: 12,
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: '#111827',
+    borderRadius: 16,
+  },
+  dashboardTitle: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
   title: { fontSize: 28, fontWeight: '900', color: '#F8FAFC' },
   subtitle: { marginTop: 6, fontSize: 14, color: '#94A3B8', marginBottom: 12 },
   networkInfo: { color: '#93C5FD', fontSize: 12, marginBottom: 4 },
@@ -439,7 +447,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#831843',
   },
-  errorText: { color: '#F8FAFC', fontWeight: '700', marginBottom: 6 },
+  apiErrorTitle: { color: '#F8FAFC', fontWeight: '700', marginBottom: 6 },
   errorDetail: { color: '#CBD5E1', fontSize: 13 },
+  patientCardWrap: { marginVertical: 8 },
   emptyText: { color: '#94A3B8', fontSize: 15, textAlign: 'center', marginTop: 20 },
 });

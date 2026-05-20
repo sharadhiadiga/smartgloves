@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from '@/constants/api';
-import type { BleSensorPacket } from '@/services/bleService';
+import type { BleSensorPacket } from '@/services/BLEService';
 
 export interface PostSensorResponse {
   message?: string;

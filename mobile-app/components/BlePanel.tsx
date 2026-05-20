@@ -1,6 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Platform,
   StyleSheet,
@@ -65,6 +64,11 @@ export default function BlePanel({
   onConnect,
   onDisconnect,
 }: BlePanelProps) {
+  const filteredDevices = useMemo(
+    () => devices.filter((d) => d.name === 'Health_Glove_ESP32'),
+    [devices]
+  );
+
   if (Platform.OS === 'web') {
     return (
       <View style={styles.panel}>
@@ -82,68 +86,63 @@ export default function BlePanel({
   }
 
   return (
-    <View style={styles.fullScreen}>
-      <View style={styles.headerRow}>
-        <Text style={styles.headerText}>Select ESP32 Device</Text>
-        <View style={styles.headerButtons}>
-          <TouchableOpacity
-            onPress={onStartScan}
-            disabled={!bleSupported || isScanning}
-            style={[styles.headerBtn, (!bleSupported || isScanning) && styles.headerBtnDisabled]}
-          >
-            <Text style={styles.headerBtnText}>{isScanning ? 'Scanning…' : 'Scan'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onStopScan} style={[styles.headerBtn, styles.headerBtnSecondary]}>
-            <Text style={styles.headerBtnText}>Stop</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onDisconnect}
-            disabled={!connectedDevice}
-            style={[styles.headerBtn, styles.headerBtnDanger, !connectedDevice && styles.headerBtnDisabled]}
-          >
-            <Text style={styles.headerBtnText}>Disconnect</Text>
-          </TouchableOpacity>
-        </View>
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>ESP32 Bluetooth</Text>
+
+      <View style={styles.headerButtons}>
+        <TouchableOpacity
+          onPress={onStartScan}
+          disabled={!bleSupported || isScanning}
+          style={[styles.headerBtn, (!bleSupported || isScanning) && styles.headerBtnDisabled]}
+        >
+          <Text style={styles.headerBtnText}>{isScanning ? 'Scanning…' : 'Scan'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onStopScan} style={[styles.headerBtn, styles.headerBtnSecondary]}>
+          <Text style={styles.headerBtnText}>Stop</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onDisconnect}
+          disabled={!connectedDevice}
+          style={[styles.headerBtn, styles.headerBtnDanger, !connectedDevice && styles.headerBtnDisabled]}
+        >
+          <Text style={styles.headerBtnText}>Disconnect</Text>
+        </TouchableOpacity>
       </View>
 
       <Text style={styles.subHeaderText}>
-        Status: {statusLabel(connectionStatus)} · Radio: {bluetoothState} · Found: {devices.length}
+        Status: {statusLabel(connectionStatus)} · Radio: {bluetoothState} · Found: {filteredDevices.length}
       </Text>
 
       {bleError ? <Text style={styles.errorText}>{bleError}</Text> : null}
 
-      <FlatList
-        data={devices}
-        keyExtractor={(item) => item.id}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 50 }}
-        showsVerticalScrollIndicator
-        initialNumToRender={20}
-        maxToRenderPerBatch={20}
-        windowSize={10}
-        onScroll={() => console.log('SCROLLING')}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            {isScanning ? 'Scanning for Health_Glove_ESP32…' : 'Tap Scan to find Health_Glove_ESP32'}
-          </Text>
-        }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => onConnect(item)}
-            style={styles.deviceTile}
-          >
-            <Text style={styles.deviceTileName}>
-              {item.name || 'Health_Glove_ESP32'}
+      <View style={styles.deviceListBox}>
+        <FlatList
+          data={filteredDevices}
+          keyExtractor={(item) => item.id}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={5}
+          ListEmptyComponent={
+            <Text style={styles.emptyTextInBox}>
+              {isScanning ? 'Scanning for Health_Glove_ESP32…' : 'Tap Scan to find Health_Glove_ESP32'}
             </Text>
-            <Text style={styles.deviceTileId}>{item.id}</Text>
-          </TouchableOpacity>
-        )}
-      />
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity onPress={() => onConnect(item)} style={styles.deviceRow}>
+              <Text style={styles.deviceTileName}>{item.name || 'Health_Glove_ESP32'}</Text>
+              <Text style={styles.deviceTileId}>{item.id}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
 
       {livePacket ? (
         <View style={styles.liveStrip}>
           <Text style={styles.liveStripText}>
-            Live: {livePacket.temperature}°C · {livePacket.heartRate} bpm · SpO₂ {livePacket.spo2}% · GSR {livePacket.gsr} · POSTs {postsSent}
+            Live: {livePacket.temperature}°C · {livePacket.heartRate} bpm · SpO₂ {livePacket.spo2}% · GSR{' '}
+            {livePacket.gsr} · POSTs {postsSent}
           </Text>
           <Text style={styles.liveStripRaw} numberOfLines={1}>
             {lastRaw}
@@ -198,33 +197,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  fullScreen: {
-    flex: 1,
-    backgroundColor: '#000',
+  card: {
+    backgroundColor: '#111827',
     borderRadius: 16,
+    padding: 16,
     overflow: 'hidden',
-    paddingTop: 6,
+    ...Platform.select({
+      android: { elevation: 5 },
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.35,
+        shadowRadius: 4,
+      },
+      default: {},
+    }),
   },
-  headerRow: {
-    paddingHorizontal: 10,
-    paddingTop: 10,
-  },
-  headerText: {
-    color: 'white',
+  cardTitle: {
+    color: '#F8FAFC',
     fontSize: 18,
-    marginBottom: 10,
     fontWeight: '800',
+    marginBottom: 10,
   },
   subHeaderText: {
     color: '#9CA3AF',
     fontSize: 12,
-    paddingHorizontal: 10,
     marginBottom: 8,
   },
   headerButtons: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 10,
     flexWrap: 'wrap',
   },
   headerBtn: {
@@ -252,21 +255,24 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#FCA5A5',
     fontSize: 12,
-    paddingHorizontal: 10,
     marginBottom: 8,
   },
-  emptyText: {
+  deviceListBox: {
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: '#000000',
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  emptyTextInBox: {
     color: '#9CA3AF',
     fontSize: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  deviceTile: {
     padding: 16,
-    marginVertical: 8,
-    marginHorizontal: 10,
-    backgroundColor: '#1f2937',
-    borderRadius: 12,
+  },
+  deviceRow: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
   },
   deviceTileName: {
     color: 'white',
@@ -279,11 +285,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   liveStrip: {
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#111827',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    backgroundColor: '#000',
+    borderTopColor: '#374151',
   },
   liveStripText: {
     color: '#E5E7EB',

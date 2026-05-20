@@ -8,7 +8,7 @@ import {
   DEFAULT_PATIENT_ID,
   isBleSupported,
   type BleSensorPacket,
-} from '@/services/bleService';
+} from '@/services/BLEService';
 
 export type BleConnectionStatus =
   | 'idle'
