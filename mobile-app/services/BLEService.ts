@@ -16,11 +16,11 @@ export const DEFAULT_PATIENT_ID =
   process.env.EXPO_PUBLIC_PATIENT_ID?.trim() || 'P001';
 
 export const BLE_SERVICE_UUID = (
-  process.env.EXPO_PUBLIC_BLE_SERVICE_UUID || '12345678-1234-1234-1234-123456789ABC'
+  process.env.EXPO_PUBLIC_BLE_SERVICE_UUID || '0000fff0-0000-1000-8000-00805f9b34fb'
 ).toLowerCase();
 
 export const BLE_CHAR_UUID = (
-  process.env.EXPO_PUBLIC_BLE_CHAR_UUID || 'ABCD1234-5678-5678-5678-ABCDEF123456'
+  process.env.EXPO_PUBLIC_BLE_CHAR_UUID || '0000fff1-0000-1000-8000-00805f9b34fb'
 ).toLowerCase();
 
 /** True on iOS/Android native; false on web (use mock / disabled UI). */
@@ -144,6 +144,33 @@ class BleServiceImpl {
     defaultPatientId: string;
   } | null = null;
 
+  private async logGatt(device: Device) {
+    try {
+      const services = await device.services();
+      console.log('[BLE][GATT] Services:', services.map((s) => s.uuid));
+
+      for (const s of services) {
+        try {
+          const chars = await device.characteristicsForService(s.uuid);
+          console.log(
+            `[BLE][GATT] Service ${s.uuid} characteristics:`,
+            chars.map((c) => ({
+              uuid: c.uuid,
+              isNotifiable: c.isNotifiable,
+              isReadable: c.isReadable,
+              isWritableWithResponse: c.isWritableWithResponse,
+              isWritableWithoutResponse: c.isWritableWithoutResponse,
+            }))
+          );
+        } catch (e: unknown) {
+          console.log('[BLE][GATT] Failed to read characteristics for service', s.uuid);
+        }
+      }
+    } catch (e: unknown) {
+      console.log('[BLE][GATT] Failed to list services');
+    }
+  }
+
   private ensureManager() {
     if (Platform.OS === 'web') {
       throw new Error('BLE not supported on web. Use Android build.');
@@ -204,6 +231,10 @@ class BleServiceImpl {
     await device.discoverAllServicesAndCharacteristics();
     this.connectedDevice = device;
     console.log('Connected to device:', device.name || device.id);
+
+    console.log('[BLE] Expected serviceUUID:', BLE_SERVICE_UUID);
+    console.log('[BLE] Expected charUUID:', BLE_CHAR_UUID);
+    await this.logGatt(device);
 
     this.disconnectSub?.remove();
     this.disconnectSub = mgr.onDeviceDisconnected(device.id, (_err, disconnected) => {
@@ -293,32 +324,38 @@ class BleServiceImpl {
     const characteristic = characteristicUUID.toLowerCase();
 
     this.notifySub?.remove();
-    this.notifySub = device.monitorCharacteristicForService(
-      service,
-      characteristic,
-      (error: BleError | null, char: Characteristic | null) => {
-        if (error) {
-          listener.onError(error.message);
-          return;
+    try {
+      this.notifySub = device.monitorCharacteristicForService(
+        service,
+        characteristic,
+        (error: BleError | null, char: Characteristic | null) => {
+          if (error) {
+            listener.onError(error.message);
+            return;
+          }
+          const value = char?.value;
+          if (!value) return;
+
+          console.log('Receiving BLE data');
+
+          const parsed = parseBleBase64Data(value, listener.defaultPatientId);
+          if (!parsed.ok) {
+            listener.onError(parsed.error);
+            return;
+          }
+
+          listener.onRaw(parsed.rawText);
+          console.log('Receiving BLE data:', parsed.rawText);
+          listener.onPacket(parsed.packet, { rawText: parsed.rawText, format: parsed.format });
         }
-        const value = char?.value;
-        if (!value) return;
+      );
 
-        console.log('Receiving BLE data');
-
-        const parsed = parseBleBase64Data(value, listener.defaultPatientId);
-        if (!parsed.ok) {
-          listener.onError(parsed.error);
-          return;
-        }
-
-        listener.onRaw(parsed.rawText);
-        console.log('Receiving BLE data:', parsed.rawText);
-        listener.onPacket(parsed.packet, { rawText: parsed.rawText, format: parsed.format });
-      }
-    );
-
-    console.log('[BLE] Subscribed to notifications');
+      console.log('[BLE] Subscribed to notifications', { service, characteristic });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Failed to subscribe';
+      console.log('[BLE] Subscription setup failed:', message);
+      listener.onError(message);
+    }
   }
 }
 
