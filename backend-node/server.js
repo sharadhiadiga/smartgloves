@@ -67,15 +67,12 @@ app.use((err, req, res, next) => {
 const startServer = async () => {
   try {
     await connectDB();
-    console.log('[ENV] MongoDB ready — Doctor tokens will persist');
   } catch (error) {
-    console.error('❌ MongoDB connection failed:', error.message);
-    console.warn('⚠️ Push tokens will use in-memory cache only until MONGO_URI is fixed on Render');
+    console.warn('MongoDB connection failed. Server will continue without database access.');
   }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on 0.0.0.0:${PORT}`);
-    console.log(`[ENV] DOCTOR_USER_ID=${process.env.DOCTOR_USER_ID || 'doctor1'}`);
   });
 };
 

@@ -53,7 +53,6 @@ async function configureAndroidChannel(): Promise<void> {
 
 async function savePushTokenToBackend(userId: string, token: string): Promise<void> {
   const url = `${getApiBaseUrl()}/api/save-token`;
-  console.log('📡 Sending token to backend:', token);
   console.log('[Push] POST', url, { userId });
 
   const response = await fetch(url, {
@@ -62,29 +61,19 @@ async function savePushTokenToBackend(userId: string, token: string): Promise<vo
     body: JSON.stringify({ userId, token }),
   });
 
-  const text = await response.text();
-  let json: { success?: boolean; user?: unknown; error?: string } = {};
-  try {
-    json = text ? JSON.parse(text) : {};
-  } catch {
-    json = { error: text };
-  }
-
   if (!response.ok) {
-    console.error('[Push] save-token failed:', response.status, json);
-    throw new Error(json.error || text || `save-token failed (${response.status})`);
+    const text = await response.text();
+    throw new Error(text || `save-token failed (${response.status})`);
   }
 
-  console.log('✅ Token saved on backend:', json);
-  console.log('[Push] Backend save-token response:', json);
+  console.log('[Push] Token saved on backend for', userId);
 }
 
 /**
  * Get Expo push token and register with backend (required for closed-app notifications).
  */
 export async function registerForPushNotifications(): Promise<string | null> {
-  const apiBase = getApiBaseUrl();
-  console.log('[Push] registerForPushNotifications — API:', apiBase, 'userId:', DEFAULT_DOCTOR_USER_ID);
+  console.log('[Push] registerForPushNotifications');
 
   await configureAndroidChannel();
 
@@ -92,8 +81,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
     console.log('[Push] Use a physical device + EAS build (not Expo Go)');
     return null;
   }
-
-  console.log('📲 Requesting permissions...');
 
   const { status: existing } = await Notifications.getPermissionsAsync();
   let status = existing;
@@ -104,41 +91,24 @@ export async function registerForPushNotifications(): Promise<string | null> {
   }
 
   if (status !== 'granted') {
-    console.log('[Push] Permission denied:', status);
+    console.log('[Push] Permission denied');
     return null;
   }
-
-  console.log('[Push] Permission granted');
 
   const projectId =
     Constants.expoConfig?.extra?.eas?.projectId ??
     (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
-
-  if (!projectId) {
-    console.warn('[Push] Missing EAS projectId in app.json — push token may fail');
-  }
 
   const token = (
     await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined)
   ).data;
 
   storedPushToken = token;
-  console.log('🔥 PUSH TOKEN:', token);
+  console.log('PUSH TOKEN:', token);
 
   await savePushTokenToBackend(DEFAULT_DOCTOR_USER_ID, token);
-  console.log('[Push] Token registered for userId:', DEFAULT_DOCTOR_USER_ID);
 
   return token;
-}
-
-/** Re-send cached token to backend (e.g. after dashboard mount). */
-export async function ensurePushTokenOnBackend(): Promise<void> {
-  if (storedPushToken) {
-    console.log('[Push] Re-syncing token to backend...');
-    await savePushTokenToBackend(DEFAULT_DOCTOR_USER_ID, storedPushToken);
-    return;
-  }
-  await registerForPushNotifications();
 }
 
 export function handleNotificationNavigation(router: Router, data?: PushNotificationData): void {

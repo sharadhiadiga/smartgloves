@@ -15,29 +15,26 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+function PushNotificationRoot() {
   const router = useRouter();
 
   useEffect(() => {
-    console.log('🚀 App started - registering for push notifications');
-
-    registerForPushNotifications()
-      .then((token) => {
-        console.log('✅ PUSH TOKEN GENERATED:', token);
-      })
-      .catch((err) => {
-        console.error('❌ Push registration error:', err);
-      });
-  }, []);
-
-  useEffect(() => {
+    void registerForPushNotifications().catch((err) => {
+      console.error('[Push] Registration failed:', err);
+    });
     void consumeInitialNotification(router);
     return setupNotificationListeners(router);
   }, [router]);
 
+  return null;
+}
+
+export default function RootLayout() {
+  const colorScheme = useColorScheme();
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <PushNotificationRoot />
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="patient/[patientId]" options={{ title: 'Patient Details' }} />
