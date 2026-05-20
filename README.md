@@ -1,6 +1,16 @@
 # SmartGloves
 
-SmartGloves is a comprehensive smart wearable health monitoring system that integrates a Node.js backend, a Python machine learning model, and a React Native mobile application built with Expo. The system collects health data from wearable devices, processes it using machine learning algorithms, and provides real-time insights through a user-friendly mobile app.
+SmartGloves is a smart wearable health monitoring system: **ESP32 → WiFi → Node.js API → Expo mobile app**. Sensor data is POSTed over HTTP from the glove; the app polls the backend every 2 seconds. BLE is no longer used.
+
+## Architecture (WiFi)
+
+```
+ESP32 (sensors) --WiFi POST--> Backend :5000/api/data
+Mobile app      --WiFi GET---> Backend :5000/api/patients
+```
+
+- Firmware: `firmware/esp32_wifi_health_glove/`
+- Configure ESP32 `BACKEND_HOST` and mobile `EXPO_PUBLIC_API_BASE_URL` to your machine’s **LAN IP** (same WiFi).
 
 ## Project Structure
 
