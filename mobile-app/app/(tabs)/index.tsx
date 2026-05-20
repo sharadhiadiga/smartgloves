@@ -274,131 +274,126 @@ export default function DashboardScreen() {
     void fetchPatients(controller.signal).finally(() => controller.abort());
   }, [fetchPatients]);
 
-  const listHeader = useMemo(
-    () => (
-      <View>
-        <Text style={styles.title}>Doctor Dashboard</Text>
-        <Text style={styles.subtitle}>ESP32 → BLE → Backend → ML → Live vitals</Text>
-
-        {criticalBanner ? (
-          <View style={styles.criticalBanner}>
-            <Text style={styles.criticalBannerText}>🚨 {criticalBanner}</Text>
-            <Pressable onPress={() => setCriticalBanner(null)}>
-              <Text style={styles.dismissText}>Dismiss</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        <BlePanel
-          bleSupported={ble.bleSupported}
-          isScanning={ble.isScanning}
-          connectionStatus={ble.connectionStatus}
-          connectedDevice={ble.connectedDevice}
-          devices={ble.devices}
-          livePacket={ble.livePacket}
-          lastRaw={ble.lastRaw}
-          bleError={ble.bleError}
-          postsSent={ble.postsSent}
-          bluetoothState={ble.bluetoothState}
-          onStartScan={() => void ble.startScan()}
-          onStopScan={ble.stopScan}
-          onConnect={(d) => void ble.connectToDevice(d)}
-          onDisconnect={() => void ble.disconnect()}
-        />
-
-        <Text style={styles.networkInfo}>
-          Cloud: {offline ? 'Offline' : 'Connected'}
-          {lastUpdated ? ` · ${new Date(lastUpdated).toLocaleTimeString()}` : ''}
-          {ble.lastBackendAt ? ` · BLE POST ${new Date(ble.lastBackendAt).toLocaleTimeString()}` : ''}
-        </Text>
-        {retryCount > 0 && <Text style={styles.retryText}>API retries: {retryCount}</Text>}
-
-        <View style={styles.searchContainer}>
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search by name or patient ID"
-            placeholderTextColor="#94A3B8"
-            style={styles.searchInput}
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-          />
-        </View>
-
-        <View style={styles.filterRow}>
-          {STATUS_FILTERS.map((status) => {
-            const isActive = filterStatus === status;
-            return (
-              <Pressable
-                key={status}
-                onPress={() => setFilterStatus(status)}
-                style={({ pressed }) => [
-                  styles.filterButton,
-                  isActive && styles.filterButtonActive,
-                  pressed && styles.filterButtonPressed,
-                ]}
-              >
-                <Text style={[styles.filterText, isActive && styles.filterTextActive]}>{status}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {loading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#7C3AED" />
-            <Text style={styles.loadingText}>Loading patients from cloud…</Text>
-          </View>
-        )}
-
-        {error && !loading && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>API issue</Text>
-            <Text style={styles.errorDetail}>{error}</Text>
-          </View>
-        )}
-      </View>
-    ),
-    [
-      ble,
-      criticalBanner,
-      error,
-      filterStatus,
-      lastUpdated,
-      loading,
-      offline,
-      retryCount,
-      searchQuery,
-    ]
-  );
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <FlatList
-        ref={listRef}
-        data={filteredPatients}
-        renderItem={({ item }) => <PatientCard patient={item} />}
-        keyExtractor={(item) => item.id}
-        ListHeaderComponent={listHeader}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshing={refreshing}
-        onRefresh={handleRefresh}
-        ListEmptyComponent={
-          !loading ? (
-            <Text style={styles.emptyText}>
-              {error ? 'Connect ESP32 via BLE above, or wait for cloud sync.' : 'No patients yet — connect ESP32'}
-            </Text>
-          ) : null
-        }
-      />
+      <View style={styles.screen}>
+        <View style={styles.bleSection}>
+          <Text style={styles.title}>Doctor Dashboard</Text>
+          <Text style={styles.subtitle}>ESP32 → BLE → Backend → ML → Live vitals</Text>
+
+          {criticalBanner ? (
+            <View style={styles.criticalBanner}>
+              <Text style={styles.criticalBannerText}>🚨 {criticalBanner}</Text>
+              <Pressable onPress={() => setCriticalBanner(null)}>
+                <Text style={styles.dismissText}>Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <Text style={styles.networkInfo}>
+            Cloud: {offline ? 'Offline' : 'Connected'}
+            {lastUpdated ? ` · ${new Date(lastUpdated).toLocaleTimeString()}` : ''}
+            {ble.lastBackendAt ? ` · BLE POST ${new Date(ble.lastBackendAt).toLocaleTimeString()}` : ''}
+          </Text>
+          {retryCount > 0 && <Text style={styles.retryText}>API retries: {retryCount}</Text>}
+
+          <View style={styles.blePanelWrap}>
+            <BlePanel
+              bleSupported={ble.bleSupported}
+              isScanning={ble.isScanning}
+              connectionStatus={ble.connectionStatus}
+              connectedDevice={ble.connectedDevice}
+              devices={ble.devices}
+              livePacket={ble.livePacket}
+              lastRaw={ble.lastRaw}
+              bleError={ble.bleError}
+              postsSent={ble.postsSent}
+              bluetoothState={ble.bluetoothState}
+              onStartScan={() => void ble.startScan()}
+              onStopScan={ble.stopScan}
+              onConnect={(d) => void ble.connectToDevice(d)}
+              onDisconnect={() => void ble.disconnect()}
+            />
+          </View>
+        </View>
+
+        <View style={styles.dashboardSection}>
+          <View style={styles.searchContainer}>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search by name or patient ID"
+              placeholderTextColor="#94A3B8"
+              style={styles.searchInput}
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+            />
+          </View>
+
+          <View style={styles.filterRow}>
+            {STATUS_FILTERS.map((status) => {
+              const isActive = filterStatus === status;
+              return (
+                <Pressable
+                  key={status}
+                  onPress={() => setFilterStatus(status)}
+                  style={({ pressed }) => [
+                    styles.filterButton,
+                    isActive && styles.filterButtonActive,
+                    pressed && styles.filterButtonPressed,
+                  ]}
+                >
+                  <Text style={[styles.filterText, isActive && styles.filterTextActive]}>{status}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {loading && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#7C3AED" />
+              <Text style={styles.loadingText}>Loading patients…</Text>
+            </View>
+          )}
+
+          {error && !loading && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>API issue</Text>
+              <Text style={styles.errorDetail}>{error}</Text>
+            </View>
+          )}
+
+          <FlatList
+            ref={listRef}
+            data={filteredPatients}
+            renderItem={({ item }) => <PatientCard patient={item} />}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            initialNumToRender={20}
+            maxToRenderPerBatch={20}
+            windowSize={10}
+            ListEmptyComponent={
+              !loading ? (
+                <Text style={styles.emptyText}>
+                  {error ? 'Waiting for cloud sync…' : 'No patients yet'}
+                </Text>
+              ) : null
+            }
+          />
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#020617' },
-  listContent: { paddingHorizontal: 18, paddingBottom: 24, paddingTop: 18 },
+  screen: { flex: 1, paddingHorizontal: 18, paddingTop: 18 },
+  bleSection: { flex: 1, overflow: 'hidden' },
+  blePanelWrap: { flex: 1, overflow: 'hidden' },
+  dashboardSection: { height: 300, overflow: 'hidden' },
   title: { fontSize: 28, fontWeight: '900', color: '#F8FAFC' },
   subtitle: { marginTop: 6, fontSize: 14, color: '#94A3B8', marginBottom: 12 },
   networkInfo: { color: '#93C5FD', fontSize: 12, marginBottom: 4 },

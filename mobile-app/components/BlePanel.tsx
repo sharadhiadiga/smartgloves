@@ -1,19 +1,17 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import type { Device } from 'react-native-ble-plx';
 
 import type { BleConnectionStatus } from '@/hooks/useBleDashboard';
-import { deviceDisplayName } from '@/hooks/useBleDashboard';
 import type { BleSensorPacket } from '@/services/bleService';
-import { getApiBaseUrl } from '@/constants/api';
 
 interface BlePanelProps {
   bleSupported: boolean;
@@ -51,14 +49,6 @@ function statusLabel(status: BleConnectionStatus): string {
   }
 }
 
-function statusColor(status: BleConnectionStatus): string {
-  if (status === 'subscribed') return '#22C55E';
-  if (status === 'connected') return '#38BDF8';
-  if (status === 'scanning' || status === 'connecting') return '#FACC15';
-  if (status === 'error') return '#F87171';
-  return '#94A3B8';
-}
-
 export default function BlePanel({
   bleSupported,
   isScanning,
@@ -75,27 +65,6 @@ export default function BlePanel({
   onConnect,
   onDisconnect,
 }: BlePanelProps) {
-  const isConnected = Boolean(connectedDevice);
-  const connectedColor = isConnected ? '#22C55E' : '#64748B';
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
-  const listRef = useRef<FlatList<Device> | null>(null);
-
-  const selectedDevice = useMemo(() => {
-    if (!selectedDeviceId) return null;
-    return devices.find((d) => d.id === selectedDeviceId) ?? null;
-  }, [devices, selectedDeviceId]);
-
-  const isConnecting = connectionStatus === 'connecting';
-  const filteredDevices = useMemo(() => {
-    const espLike = devices.filter((d) => {
-      const label = (d.name || d.localName || '').trim().toLowerCase();
-      return label.includes('esp') || label.includes('glove') || label.includes('health');
-    });
-
-    // If we found ESP-like devices, show only those; otherwise show all discovered devices.
-    return espLike.length > 0 ? espLike : devices;
-  }, [devices]);
-
   if (Platform.OS === 'web') {
     return (
       <View style={styles.panel}>
@@ -105,153 +74,82 @@ export default function BlePanel({
             BLE not supported on web. Use an Android development build on a physical device.
           </Text>
         </View>
-        <Pressable style={[styles.primaryBtn, styles.btnDisabled]} disabled>
-          <Text style={styles.primaryBtnText}>Scan Devices (disabled)</Text>
-        </Pressable>
+        <View style={styles.webButtonDisabled}>
+          <Text style={styles.webButtonDisabledText}>Scan Devices (disabled)</Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.panel}>
-      <View style={styles.titleRow}>
-        <Text style={styles.panelTitle}>ESP32 Bluetooth</Text>
-        <View style={[styles.connectedDot, { backgroundColor: connectedColor }]} />
-        <Text style={[styles.connectedLabel, { color: connectedColor }]}>
-          {isConnected ? 'Connected' : 'Not connected'}
-        </Text>
-      </View>
-
-      <Text style={styles.meta}>
-        BLE: {statusLabel(connectionStatus)} · Radio: {bluetoothState}
-      </Text>
-      <Text style={styles.meta}>API: {getApiBaseUrl()}</Text>
-
-      <View style={styles.buttonRow}>
-        <Pressable
-          style={[styles.primaryBtn, (isScanning || !bleSupported) && styles.btnDimmed]}
-          onPress={onStartScan}
-          disabled={!bleSupported || isScanning}
-        >
-          <Text style={styles.primaryBtnText}>Scan Devices</Text>
-        </Pressable>
-        <Pressable style={styles.secondaryBtn} onPress={onStopScan}>
-          <Text style={styles.secondaryBtnText}>Stop</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.buttonRow}>
-        <Pressable
-          style={[
-            styles.connectBtnWide,
-            (!selectedDevice || isConnected || isConnecting) && styles.btnDisabled,
-          ]}
-          onPress={() => selectedDevice && onConnect(selectedDevice)}
-          disabled={!selectedDevice || isConnected || isConnecting}
-        >
-          <Text style={styles.connectBtnWideText}>
-            {isConnecting ? 'Connecting…' : selectedDevice ? 'Connect' : 'Select a device'}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.disconnectBtnWide, !isConnected && styles.btnDisabled]}
-          onPress={onDisconnect}
-          disabled={!isConnected}
-        >
-          <Text style={styles.disconnectBtnWideText}>Disconnect</Text>
-        </Pressable>
-      </View>
-
-      {isScanning && (
-        <View style={styles.scanRow}>
-          <ActivityIndicator color="#8B5CF6" size="small" />
-          <Text style={styles.scanText}>Scanning started — looking for ESP32…</Text>
+    <View style={styles.fullScreen}>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerText}>Select ESP32 Device</Text>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            onPress={onStartScan}
+            disabled={!bleSupported || isScanning}
+            style={[styles.headerBtn, (!bleSupported || isScanning) && styles.headerBtnDisabled]}
+          >
+            <Text style={styles.headerBtnText}>{isScanning ? 'Scanning…' : 'Scan'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onStopScan} style={[styles.headerBtn, styles.headerBtnSecondary]}>
+            <Text style={styles.headerBtnText}>Stop</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onDisconnect}
+            disabled={!connectedDevice}
+            style={[styles.headerBtn, styles.headerBtnDanger, !connectedDevice && styles.headerBtnDisabled]}
+          >
+            <Text style={styles.headerBtnText}>Disconnect</Text>
+          </TouchableOpacity>
         </View>
-      )}
+      </View>
+
+      <Text style={styles.subHeaderText}>
+        Status: {statusLabel(connectionStatus)} · Radio: {bluetoothState} · Found: {devices.length}
+      </Text>
 
       {bleError ? <Text style={styles.errorText}>{bleError}</Text> : null}
 
-      <View style={styles.deviceList}>
-        <Text style={styles.sectionLabel}>
-          Discovered devices {filteredDevices.length > 0 ? `(${filteredDevices.length})` : ''}
-        </Text>
-
-        <View style={styles.deviceListViewport}>
-        <FlatList
-          ref={(r) => {
-            listRef.current = r;
-          }}
-          data={filteredDevices}
-          keyExtractor={(item) => item.id}
-          style={styles.deviceFlatList}
-          contentContainerStyle={styles.deviceListContent}
-          showsVerticalScrollIndicator
-          nestedScrollEnabled
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>
-              {isScanning ? 'Scanning…' : 'No devices yet. Tap “Scan Devices”.'}
+      <FlatList
+        data={devices}
+        keyExtractor={(item) => item.id}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 50 }}
+        showsVerticalScrollIndicator
+        initialNumToRender={20}
+        maxToRenderPerBatch={20}
+        windowSize={10}
+        onScroll={() => console.log('SCROLLING')}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>
+            {isScanning ? 'Scanning for Health_Glove_ESP32…' : 'Tap Scan to find Health_Glove_ESP32'}
+          </Text>
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            onPress={() => onConnect(item)}
+            style={styles.deviceTile}
+          >
+            <Text style={styles.deviceTileName}>
+              {item.name || 'Health_Glove_ESP32'}
             </Text>
-          }
-          renderItem={({ item }) => {
-            const selected = item.id === selectedDeviceId;
-            const connected = connectedDevice?.id === item.id;
-            return (
-              <Pressable
-                onPress={() => {
-                  setSelectedDeviceId(item.id);
-                  if (!isConnected && !isConnecting) {
-                    onConnect(item);
-                  }
-                }}
-                style={({ pressed }) => [
-                  styles.deviceRow,
-                  selected && styles.deviceRowSelected,
-                  connected && styles.deviceRowConnected,
-                  pressed && styles.deviceRowPressed,
-                ]}
-              >
-                <View style={styles.deviceInfo}>
-                  <View style={styles.deviceTitleRow}>
-                    <Text style={styles.deviceName}>{deviceDisplayName(item)}</Text>
-                    {connected ? <Text style={styles.connectedPill}>Connected</Text> : null}
-                    {selected && !connected ? <Text style={styles.selectedPill}>Selected</Text> : null}
-                  </View>
-                  <Text style={styles.deviceId}>{item.id}</Text>
-                </View>
-              </Pressable>
-            );
-          }}
-        />
-        </View>
-      </View>
+            <Text style={styles.deviceTileId}>{item.id}</Text>
+          </TouchableOpacity>
+        )}
+      />
 
-      {connectedDevice && (
-        <View style={styles.connectedBox}>
-          <Text style={styles.sectionLabel}>Connected device</Text>
-          <Text style={styles.deviceName}>
-            {deviceDisplayName(connectedDevice)} ({connectedDevice.id})
+      {livePacket ? (
+        <View style={styles.liveStrip}>
+          <Text style={styles.liveStripText}>
+            Live: {livePacket.temperature}°C · {livePacket.heartRate} bpm · SpO₂ {livePacket.spo2}% · GSR {livePacket.gsr} · POSTs {postsSent}
           </Text>
-          <Pressable style={styles.disconnectBtn} onPress={onDisconnect}>
-            <Text style={styles.disconnectText}>Disconnect</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {livePacket && (
-        <View style={styles.liveBox}>
-          <Text style={styles.sectionLabel}>Live vitals (BLE)</Text>
-          <Text style={[styles.liveStatus, { color: statusColor(connectionStatus) }]}>
-            Streaming · POSTs: {postsSent}
+          <Text style={styles.liveStripRaw} numberOfLines={1}>
+            {lastRaw}
           </Text>
-          <Text style={styles.vitalLine}>Patient: {livePacket.patientId}</Text>
-          <Text style={styles.vitalLine}>Temp: {livePacket.temperature}°C</Text>
-          <Text style={styles.vitalLine}>HR: {livePacket.heartRate} bpm</Text>
-          <Text style={styles.vitalLine}>SpO₂: {livePacket.spo2}%</Text>
-          <Text style={styles.vitalLine}>GSR: {livePacket.gsr}</Text>
-          <Text style={styles.rawLabel}>Raw: {lastRaw}</Text>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -266,85 +164,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     overflow: 'hidden',
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 8,
-  },
   panelTitle: {
     color: '#F8FAFC',
     fontSize: 17,
     fontWeight: '800',
     flex: 1,
-  },
-  connectedDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  connectedLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  meta: {
-    color: '#94A3B8',
-    fontSize: 11,
-    marginBottom: 3,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-    marginBottom: 8,
-  },
-  primaryBtn: {
-    flex: 1,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#4F46E5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  btnDimmed: {
-    opacity: 0.7,
-  },
-  btnDisabled: {
-    opacity: 0.45,
-  },
-  secondaryBtn: {
-    width: 72,
-    height: 42,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryBtnText: {
-    color: '#E2E8F0',
-    fontWeight: '700',
-  },
-  scanRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  scanText: {
-    color: '#A78BFA',
-    fontSize: 12,
-  },
-  errorText: {
-    color: '#FCA5A5',
-    fontSize: 12,
-    marginBottom: 8,
   },
   webBanner: {
     backgroundColor: '#422006',
@@ -359,168 +183,116 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  sectionLabel: {
-    color: '#CBD5E1',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 6,
-    marginTop: 4,
-  },
-  deviceList: {
-    marginTop: 4,
-  },
-  deviceListViewport: {
-    height: 350,
-    overflow: 'hidden',
-  },
-  deviceFlatList: {
-    flex: 1,
-  },
-  deviceListContent: {
-    paddingBottom: 20,
-  },
-  emptyText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    paddingVertical: 8,
-  },
-  deviceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 6,
-    backgroundColor: '#0F172A',
-  },
-  deviceRowSelected: {
-    borderColor: '#6366F1',
-    backgroundColor: '#0B1530',
-  },
-  deviceRowConnected: {
-    borderColor: '#22C55E',
-    backgroundColor: '#052014',
-  },
-  deviceRowPressed: {
-    opacity: 0.9,
-  },
-  deviceInfo: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  deviceTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  deviceName: {
-    color: '#F1F5F9',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  connectedPill: {
-    color: '#052014',
-    backgroundColor: '#22C55E',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: '800',
-    overflow: 'hidden',
-  },
-  selectedPill: {
-    color: '#0B1020',
-    backgroundColor: '#A5B4FC',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: '800',
-    overflow: 'hidden',
-  },
-  deviceId: {
-    color: '#64748B',
-    fontSize: 10,
-    marginTop: 2,
-  },
-  connectBtn: {
-    backgroundColor: '#2563EB',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  connectBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  connectBtnWide: {
-    flex: 1,
+  webButtonDisabled: {
+    opacity: 0.45,
     height: 42,
-    borderRadius: 12,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  connectBtnWideText: {
-    color: '#FFF',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  disconnectBtnWide: {
-    flex: 1,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#991B1B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  disconnectBtnWideText: {
-    color: '#FFF',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  connectedBox: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#1E293B',
-  },
-  disconnectBtn: {
-    marginTop: 8,
-    backgroundColor: '#991B1B',
-    borderRadius: 10,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  disconnectText: {
-    color: '#FFF',
-    fontWeight: '700',
-  },
-  liveBox: {
-    marginTop: 10,
-    padding: 10,
     borderRadius: 12,
     backgroundColor: '#111827',
     borderWidth: 1,
     borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  liveStatus: {
+  webButtonDisabledText: {
+    color: '#E2E8F0',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  fullScreen: {
+    flex: 1,
+    backgroundColor: '#000',
+    borderRadius: 16,
+    overflow: 'hidden',
+    paddingTop: 6,
+  },
+  headerRow: {
+    paddingHorizontal: 10,
+    paddingTop: 10,
+  },
+  headerText: {
+    color: 'white',
+    fontSize: 18,
+    marginBottom: 10,
+    fontWeight: '800',
+  },
+  subHeaderText: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
+  headerBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#1f2937',
+    borderRadius: 12,
+  },
+  headerBtnSecondary: {
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#374151',
+  },
+  headerBtnDanger: {
+    backgroundColor: '#7f1d1d',
+  },
+  headerBtnDisabled: {
+    opacity: 0.5,
+  },
+  headerBtnText: {
+    color: 'white',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  errorText: {
+    color: '#FCA5A5',
+    fontSize: 12,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+  },
+  emptyText: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  deviceTile: {
+    padding: 16,
+    marginVertical: 8,
+    marginHorizontal: 10,
+    backgroundColor: '#1f2937',
+    borderRadius: 12,
+  },
+  deviceTileName: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deviceTileId: {
+    color: 'gray',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  liveStrip: {
+    borderTopWidth: 1,
+    borderTopColor: '#111827',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    backgroundColor: '#000',
+  },
+  liveStripText: {
+    color: '#E5E7EB',
     fontSize: 12,
     fontWeight: '700',
-    marginBottom: 6,
   },
-  vitalLine: {
-    color: '#E2E8F0',
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  rawLabel: {
-    color: '#64748B',
-    fontSize: 10,
+  liveStripRaw: {
     marginTop: 6,
+    color: '#6B7280',
+    fontSize: 10,
   },
 });
