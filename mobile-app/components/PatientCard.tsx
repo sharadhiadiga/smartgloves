@@ -4,9 +4,12 @@ import { useRouter } from 'expo-router';
 
 export type PatientStatus = 'Low' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
 
+export type OverallRisk = 'Normal' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
+
 export interface Patient {
   id: string;
   name: string;
+  overallRiskLevel?: OverallRisk;
   temperature: number | null;
   heartRate: number | null;
   spo2: number | null;
@@ -81,8 +84,12 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
           <Text style={styles.name}>{patient.name}</Text>
           <Text style={styles.subtleText}>{patient.id}</Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: statusStyle.pill }]}> 
-          <Text style={styles.statusText}>{patient.status}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: statusStyle.pill }]}>
+          <Text style={styles.statusText}>
+            {patient.overallRiskLevel && patient.overallRiskLevel !== 'Unknown'
+              ? patient.overallRiskLevel
+              : patient.status}
+          </Text>
         </View>
       </View>
 

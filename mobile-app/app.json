@@ -23,7 +23,8 @@
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "INTERNET"
       ],
       "package": "com.anonymous.mobileapp"
     },
