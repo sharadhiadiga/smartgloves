@@ -26,6 +26,32 @@ const smartGloveSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  temperatureCondition: {
+    type: String,
+    required: false,
+    default: 'Low',
+  },
+  heartRateCondition: {
+    type: String,
+    required: false,
+    default: 'Low',
+  },
+  spo2Condition: {
+    type: String,
+    required: false,
+    default: 'Low',
+  },
+  gsrCondition: {
+    type: String,
+    required: false,
+    default: 'Normal',
+  },
+  overallRiskLevel: {
+    type: String,
+    required: false,
+    default: 'Normal',
+    index: true,
+  },
   status: {
     type: String,
     required: true,
@@ -64,6 +90,7 @@ const smartGloveSchema = new mongoose.Schema({
   deviceId: {
     type: String,
     required: false,
+    index: true,
   },
   timestamp: {
     type: Date,

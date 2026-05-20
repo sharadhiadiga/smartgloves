@@ -10,15 +10,18 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import PatientCard, { Patient } from '@/components/PatientCard';
-import { getApiBaseUrl } from '@/constants/api';
-
-const API_BASE_URL = getApiBaseUrl();
+import { fetchPatientLatest } from '@/services/api';
+import { vitalToPatient } from '@/utils/vitals';
 
 type RawPatient = Partial<Patient> & {
   _id?: string;
   patientId?: string;
   deviceId?: string;
   severity?: string;
+  temperatureCondition?: string;
+  heartRateCondition?: string;
+  spo2Condition?: string;
+  gsrCondition?: string;
 };
 
 function normalizeStatus(rawStatus: unknown): Patient['status'] {
@@ -52,36 +55,6 @@ export default function PatientDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const normalizePatient = useCallback((item: RawPatient, fallbackId: string): Patient => {
-    const id =
-      typeof item?.patientId === 'string' && item.patientId.trim().length > 0
-        ? item.patientId
-        : fallbackId;
-
-    return {
-      id,
-      name:
-        typeof item?.name === 'string' && item.name.trim().length > 0 ? item.name : id,
-      temperature: typeof item?.temperature === 'number' ? item.temperature : null,
-      heartRate: typeof item?.heartRate === 'number' ? item.heartRate : null,
-      spo2: typeof item?.spo2 === 'number' ? item.spo2 : null,
-      gsr: typeof item?.gsr === 'number' ? item.gsr : null,
-      stress: typeof item?.stress === 'number' ? item.stress : null,
-      status: normalizeStatus(item?.status || item?.severity),
-      issues: Array.isArray(item?.issues)
-        ? item.issues.filter((issue) => typeof issue === 'string' && issue.trim().length > 0)
-        : [],
-      measures: Array.isArray(item?.measures)
-        ? item.measures.filter((m) => typeof m === 'string' && m.trim().length > 0)
-        : [],
-      recommendation:
-        typeof item?.recommendation === 'string' && item.recommendation.trim().length > 0
-          ? item.recommendation
-          : '--',
-      timestamp: formatPatientTimestamp(item?.timestamp),
-    };
-  }, []);
-
   const fetchPatient = useCallback(async () => {
     if (!resolvedId) {
       setError('Missing patient ID');
@@ -93,31 +66,12 @@ export default function PatientDetailsScreen() {
     setError(null);
 
     try {
-      const url = `${API_BASE_URL}/api/all-patients`;
-      console.log('[PatientDetails] Fetching', url, 'for', resolvedId);
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-
-      const json = (await response.json()) as { patients?: RawPatient[] };
-      const list = Array.isArray(json?.patients) ? json.patients : [];
-      const match = list.find(
-        (p) =>
-          String(p.patientId || p.deviceId || p._id || '') === resolvedId ||
-          String(p._id || '') === resolvedId
-      );
-
+      const match = await fetchPatientLatest(resolvedId);
       if (!match) {
         setError('Patient not found in latest records');
         setPatient(null);
       } else {
-        setPatient(normalizePatient(match, resolvedId));
+        setPatient(vitalToPatient(match));
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load patient';
@@ -126,7 +80,7 @@ export default function PatientDetailsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [normalizePatient, resolvedId]);
+  }, [resolvedId]);
 
   useEffect(() => {
     void fetchPatient();
