@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -78,6 +78,7 @@ export default function BlePanel({
   const isConnected = Boolean(connectedDevice);
   const connectedColor = isConnected ? '#22C55E' : '#64748B';
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const listRef = useRef<FlatList<Device> | null>(null);
 
   const selectedDevice = useMemo(() => {
     if (!selectedDeviceId) return null;
@@ -85,6 +86,15 @@ export default function BlePanel({
   }, [devices, selectedDeviceId]);
 
   const isConnecting = connectionStatus === 'connecting';
+  const filteredDevices = useMemo(() => {
+    const espLike = devices.filter((d) => {
+      const label = (d.name || d.localName || '').trim().toLowerCase();
+      return label.includes('esp') || label.includes('glove') || label.includes('health');
+    });
+
+    // If we found ESP-like devices, show only those; otherwise show all discovered devices.
+    return espLike.length > 0 ? espLike : devices;
+  }, [devices]);
 
   if (Platform.OS === 'web') {
     return (
@@ -163,14 +173,21 @@ export default function BlePanel({
 
       <View style={styles.deviceList}>
         <Text style={styles.sectionLabel}>
-          Discovered devices {devices.length > 0 ? `(${devices.length})` : ''}
+          Discovered devices {filteredDevices.length > 0 ? `(${filteredDevices.length})` : ''}
         </Text>
 
+        <View style={styles.deviceListViewport}>
         <FlatList
-          data={devices}
+          ref={(r) => {
+            listRef.current = r;
+          }}
+          data={filteredDevices}
           keyExtractor={(item) => item.id}
           style={styles.deviceFlatList}
-          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.deviceListContent}
+          showsVerticalScrollIndicator
+          nestedScrollEnabled
+          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           ListEmptyComponent={
             <Text style={styles.emptyText}>
               {isScanning ? 'Scanning…' : 'No devices yet. Tap “Scan Devices”.'}
@@ -206,6 +223,7 @@ export default function BlePanel({
             );
           }}
         />
+        </View>
       </View>
 
       {connectedDevice && (
@@ -246,6 +264,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     marginBottom: 16,
+    overflow: 'hidden',
   },
   titleRow: {
     flexDirection: 'row',
@@ -350,8 +369,15 @@ const styles = StyleSheet.create({
   deviceList: {
     marginTop: 4,
   },
+  deviceListViewport: {
+    height: 350,
+    overflow: 'hidden',
+  },
   deviceFlatList: {
-    maxHeight: 300,
+    flex: 1,
+  },
+  deviceListContent: {
+    paddingBottom: 20,
   },
   emptyText: {
     color: '#94A3B8',
