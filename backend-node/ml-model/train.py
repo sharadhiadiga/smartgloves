@@ -1,63 +1,110 @@
 import pandas as pd
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.model_selection import train_test_split
 import joblib
 
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split
+
 # -----------------------------
-# 1. LOAD DATASET
+# LOAD DATASET
 # -----------------------------
 df = pd.read_csv("data/dataset.csv")
 
-print("Dataset loaded:")
+print("\nDataset Loaded:")
 print(df.head())
 
 # -----------------------------
-# 2. FEATURES & LABELS
+# FEATURES
 # -----------------------------
-X = df[["temp", "hr", "spo2", "gsr"]]
+X = df[[
+    "temp",
+    "hr",
+    "spo2",
+    "gsr"
+]]
+
+# -----------------------------
+# LABELS
+# -----------------------------
 y = df["label"]
 
 # -----------------------------
-# 3. SPLIT DATA
+# SPLIT
 # -----------------------------
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
 )
 
 # -----------------------------
-# 4. CREATE MODEL
+# MODEL
 # -----------------------------
-model = DecisionTreeClassifier(max_depth=4)
+model = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=10,
+    random_state=42
+)
 
 # -----------------------------
-# 5. TRAIN MODEL
+# TRAIN
 # -----------------------------
 model.fit(X_train, y_train)
 
 # -----------------------------
-# 6. CHECK ACCURACY
+# ACCURACY
 # -----------------------------
 accuracy = model.score(X_test, y_test)
-print("\nAccuracy:", accuracy)
+
+print("\n===================================")
+print("MODEL ACCURACY")
+print("===================================")
+
+print(f"\nAccuracy: {accuracy}")
 
 # -----------------------------
-# 7. TEST YOUR 4 MAIN CASES
+# CLASSIFICATION REPORT
+# -----------------------------
+predictions = model.predict(X_test)
+
+print("\n===================================")
+print("CLASSIFICATION REPORT")
+print("===================================")
+
+print(classification_report(
+    y_test,
+    predictions
+))
+
+# -----------------------------
+# TEST CASES
 # -----------------------------
 test_cases = [
-    [36.8, 75, 98, 2000],   # Person 1 → Normal
-    [35.0, 70, 96, 1700],   # Person 2 → Moderate
-    [38.5, 105, 92, 2500],  # Person 3 → High
-    [39.5, 125, 85, 2800]   # Person 4 → Critical
+
+    [36.8, 75, 98, 1000],  # Normal
+
+    [37.8, 110, 93, 1700], # Moderate
+
+    [38.5, 130, 90, 2400], # High
+
+    [39.8, 150, 84, 3000]  # Critical
 ]
 
-print("\nTest Predictions:")
+print("\n===================================")
+print("TEST PREDICTIONS")
+print("===================================")
+
 for case in test_cases:
+
     pred = model.predict([case])[0]
-    print(case, "→", pred)
+
+    print(f"{case} → {pred}")
 
 # -----------------------------
-# 8. SAVE MODEL
+# SAVE MODEL
 # -----------------------------
 joblib.dump(model, "model.pkl")
 
-print("\nModel saved as model.pkl")
+print("\n✅ Model saved as model.pkl")
