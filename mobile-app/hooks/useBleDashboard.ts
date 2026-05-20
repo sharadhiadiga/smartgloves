@@ -111,9 +111,18 @@ export function useBleDashboard(options: UseBleDashboardOptions = {}) {
 
     bleService.startScan(
       (device) => {
+        if (!device || !device.name) return;
+
+        // 🔥 ONLY allow your ESP32
+        if (device.name !== 'Health_Glove_ESP32') return;
+
         if (seenDeviceIds.current.has(device.id)) return;
         seenDeviceIds.current.add(device.id);
         setDevices((prev) => [...prev, device]);
+
+        // Optional fast auto-connect
+        // stopScan();
+        // void connectToDevice(device);
       },
       (message) => {
         setIsScanning(false);
