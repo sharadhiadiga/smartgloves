@@ -1,221 +1,364 @@
 /**
- * Smart Glove — WiFi HTTPS sensor uplink (Render cloud)
- * ESP32 → WiFi → POST https://smartgloves-backend.onrender.com/api/data
+ * Smart Glove — Production WiFi IoT Firmware
+ * Architecture: Sensors → ESP32 → HTTPS POST → Render Backend → Mobile Dashboard
  *
- * Libraries: WiFi, WiFiClientSecure, HTTPClient, ArduinoJson (v6+)
+ * Required libraries (Arduino Library Manager):
+ *   - WiFiManager by tzapu
+ *   - ArduinoJson by Benoit Blanchon
+ *   - Adafruit TMP117
+ *   - SparkFun MAX3010x Pulse and Heart Rate Sensor (MAX30102)
+ *   - Wire (built-in)
+ *
+ * First boot: connect phone to AP "HealthGlove_Setup" → captive portal → save WiFi.
  */
 
 #include <WiFi.h>
+#include <WiFiManager.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <Wire.h>
+#include <time.h>
 
-// ============ CONFIG — set before upload ============
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+#include <Adafruit_TMP117.h>
+#include <MAX30105.h>
+#include "heartRate.h"
 
-/** Cloud backend (Render) — full POST URL, HTTPS port 443 */
-const char* BACKEND_DATA_URL =
-  "https://smartgloves-backend.onrender.com/api/data";
+// ===================== CONFIG =====================
+static const char* BACKEND_VITALS_URL =
+  "https://smartgloves-backend.onrender.com/api/vitals";
 
-const char* PATIENT_ID = "P001";
-const unsigned long POST_INTERVAL_MS = 1500;
-const int MAX_HTTP_RETRIES = 3;
-const unsigned long HTTP_TIMEOUT_MS = 15000;  // Render cold start can be slow
+static const char* AP_PORTAL_NAME = "HealthGlove_Setup";
+static const char* DEFAULT_PATIENT_ID = "P001";
+static const char* DEFAULT_DEVICE_ID = "ESP32_001";
 
-// ============ Sensor pins (adjust for your wiring) ============
-const int PIN_TEMP = 34;
-const int PIN_HR   = 35;
-const int PIN_SPO2 = 32;
-const int PIN_GSR  = 33;
+static const uint32_t SENSOR_INTERVAL_MS = 1000;
+static const uint32_t POST_INTERVAL_MS = 1000;
+static const uint32_t WIFI_CHECK_MS = 10000;
+static const uint32_t HTTP_TIMEOUT_MS = 20000;
+static const int MAX_HTTP_RETRIES = 3;
 
-// ============ State ============
-unsigned long lastPostMs = 0;
-unsigned long lastWifiCheckMs = 0;
-const unsigned long WIFI_RECONNECT_INTERVAL_MS = 10000;
+// I2C
+static const int I2C_SDA = 21;
+static const int I2C_SCL = 22;
 
+// GSR analog
+static const int PIN_GSR = 34;
+
+// LEDs (active HIGH)
+static const int LED_WIFI = 2;
+static const int LED_CONNECTED = 4;
+static const int LED_SENDING = 16;
+static const int LED_ERROR = 17;
+
+// ===================== GLOBALS =====================
+Adafruit_TMP117 tmp117;
+MAX30105 particleSensor;
 WiFiClientSecure secureClient;
 
-// ---------- Condition helpers (match backend thresholds) ----------
-String conditionForTemperature(float t) {
-  if (t >= 39.5f || t <= 35.0f) return "Critical";
-  if (t >= 38.0f || t < 36.0f) return "High";
-  if (t >= 37.0f || t < 36.5f) return "Moderate";
-  return "Low";
+bool tmp117Ok = false;
+bool max30102Ok = false;
+
+uint32_t lastSensorMs = 0;
+uint32_t lastPostMs = 0;
+uint32_t lastWifiCheckMs = 0;
+
+struct VitalsSnapshot {
+  float temperature = 36.5f;
+  int heartRate = 75;
+  int spo2 = 98;
+  int gsr = 1200;
+  String temperatureCondition = "Normal";
+  String heartRateCondition = "Normal";
+  String spo2Condition = "Normal";
+  String gsrCondition = "Normal";
+};
+
+VitalsSnapshot currentVitals;
+byte rates[100];
+byte rateSpot = 0;
+long lastBeat = 0;
+float beatsPerMinute = 0;
+int beatAvg = 0;
+
+// ===================== LED HELPERS =====================
+void ledAllOff() {
+  digitalWrite(LED_WIFI, LOW);
+  digitalWrite(LED_CONNECTED, LOW);
+  digitalWrite(LED_SENDING, LOW);
+  digitalWrite(LED_ERROR, LOW);
 }
 
-String conditionForHeartRate(int hr) {
+void ledWifiConnecting() {
+  ledAllOff();
+  digitalWrite(LED_WIFI, HIGH);
+}
+
+void ledConnectedOk() {
+  ledAllOff();
+  digitalWrite(LED_CONNECTED, HIGH);
+}
+
+void ledSending() {
+  digitalWrite(LED_SENDING, HIGH);
+}
+
+void ledBackendError() {
+  digitalWrite(LED_ERROR, HIGH);
+}
+
+// ===================== CONDITION LABELS =====================
+String conditionTemperature(float t) {
+  if (t >= 39.5f || t <= 35.0f) return "Critical";
+  if (t >= 38.0f || t < 36.0f) return "High";
+  if (t >= 37.2f || t < 36.5f) return "Moderate";
+  return "Normal";
+}
+
+String conditionHeartRate(int hr) {
   if (hr >= 140 || hr <= 45) return "Critical";
   if (hr >= 115 || hr < 55) return "High";
   if (hr >= 100 || hr < 60) return "Moderate";
-  return "Low";
+  return "Normal";
 }
 
-String conditionForSpo2(int spo2) {
+String conditionSpo2(int spo2) {
   if (spo2 < 88) return "Critical";
   if (spo2 < 94) return "High";
   if (spo2 < 97) return "Moderate";
-  return "Low";
+  return "Normal";
 }
 
-String conditionForGsr(int gsr) {
+String conditionGsr(int gsr) {
   if (gsr >= 2400) return "Critical";
   if (gsr >= 1700) return "High";
   if (gsr >= 1200) return "Moderate";
-  return "Low";
+  return "Normal";
 }
 
-float readTemperatureC() {
-  int raw = analogRead(PIN_TEMP);
-  float voltage = (raw / 4095.0f) * 3.3f;
-  return 25.0f + (voltage - 0.5f) * 100.0f;
-}
-
-int readHeartRate() {
-  return map(analogRead(PIN_HR), 0, 4095, 60, 120);
-}
-
-int readSpo2() {
-  return map(analogRead(PIN_SPO2), 0, 4095, 92, 99);
-}
-
-int readGsr() {
-  return map(analogRead(PIN_GSR), 0, 4095, 800, 2800);
-}
-
+// ===================== WiFiManager =====================
 bool connectWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    return true;
-  }
+  Serial.println("[WiFi] Starting WiFiManager...");
+  ledWifiConnecting();
 
-  Serial.println("[WiFi] Connecting...");
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(180);
+  wm.setConnectTimeout(30);
+  wm.setCaptivePortalEnable(true);
 
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-  Serial.println();
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("[WiFi] Connected. IP: ");
-    Serial.println(WiFi.localIP());
-    return true;
-  }
-
-  Serial.println("[WiFi] Connection failed");
-  return false;
-}
-
-bool postSensorDataWithRetry() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[HTTPS] Skipped — WiFi not connected");
+  bool ok = wm.autoConnect(AP_PORTAL_NAME);
+  if (!ok) {
+    Serial.println("[WiFi] Portal timeout — restarting");
+    ledBackendError();
+    delay(2000);
+    ESP.restart();
     return false;
   }
 
-  float temperature = readTemperatureC();
-  int heartRate = readHeartRate();
-  int spo2 = readSpo2();
-  int gsr = readGsr();
+  Serial.print("[WiFi] Connected. IP: ");
+  Serial.println(WiFi.localIP());
+  ledConnectedOk();
 
-  StaticJsonDocument<512> doc;
-  doc["patientId"] = PATIENT_ID;
-  doc["temperature"] = temperature;
-  doc["temperatureCondition"] = conditionForTemperature(temperature);
-  doc["heartRate"] = heartRate;
-  doc["heartRateCondition"] = conditionForHeartRate(heartRate);
-  doc["spo2"] = spo2;
-  doc["spo2Condition"] = conditionForSpo2(spo2);
-  doc["gsr"] = gsr;
-  doc["gsrCondition"] = conditionForGsr(gsr);
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  Serial.println("[NTP] Sync requested");
+  return true;
+}
 
-  String jsonBody;
-  serializeJson(doc, jsonBody);
-  Serial.println("[HTTPS] Sending JSON:");
-  Serial.println(jsonBody);
+void reconnectIfNeeded() {
+  if (WiFi.status() == WL_CONNECTED) return;
+  Serial.println("[WiFi] Disconnected — reconnecting");
+  ledWifiConnecting();
+  WiFi.reconnect();
+  delay(2000);
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[WiFi] Reconnect failed — full portal");
+    connectWiFi();
+  } else {
+    ledConnectedOk();
+  }
+}
 
-  bool success = false;
+String isoTimestamp() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo, 500)) {
+    return String(millis());
+  }
+  char buf[32];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+  return String(buf);
+}
+
+// ===================== SENSORS =====================
+bool initSensors() {
+  Wire.begin(I2C_SDA, I2C_SCL);
+
+  tmp117Ok = tmp117.begin(0x48, &Wire);
+  Serial.println(tmp117Ok ? "[TMP117] OK" : "[TMP117] FAIL");
+
+  max30102Ok = particleSensor.begin(Wire, I2C_SPEED_FAST);
+  if (max30102Ok) {
+    particleSensor.setup();
+    particleSensor.setPulseAmplitudeRed(0x0A);
+    particleSensor.setPulseAmplitudeIR(0x0A);
+    Serial.println("[MAX30102] OK");
+  } else {
+    Serial.println("[MAX30102] FAIL");
+  }
+
+  pinMode(PIN_GSR, INPUT);
+  analogSetAttenuation(ADC_11db);
+  return tmp117Ok || max30102Ok;
+}
+
+void readSensors() {
+  if (tmp117Ok) {
+    sensors_event_t ev;
+    tmp117.getEvent(&ev);
+    currentVitals.temperature = ev.temperature;
+  } else {
+    currentVitals.temperature = 36.5f;
+  }
+
+  int gsrRaw = analogRead(PIN_GSR);
+  currentVitals.gsr = map(gsrRaw, 0, 4095, 400, 3000);
+
+  if (max30102Ok) {
+    long ir = particleSensor.getIR();
+    if (checkForBeat(ir)) {
+      long delta = millis() - lastBeat;
+      lastBeat = millis();
+      beatsPerMinute = 60.0 / (delta / 1000.0);
+      if (beatsPerMinute < 200 && beatsPerMinute > 30) {
+        rates[rateSpot++] = (byte)beatsPerMinute;
+        rateSpot %= sizeof(rates);
+        beatAvg = 0;
+        for (byte i = 0; i < sizeof(rates); i++) beatAvg += rates[i];
+        beatAvg /= sizeof(rates);
+        currentVitals.heartRate = beatAvg;
+      }
+    }
+    float ratio = (float)particleSensor.getRed() / (float)(particleSensor.getIR() + 1);
+    int estSpo2 = (int)(110.0f - 25.0f * ratio);
+    estSpo2 = constrain(estSpo2, 85, 100);
+    if (ir > 50000) currentVitals.spo2 = estSpo2;
+  }
+
+  currentVitals.temperatureCondition = conditionTemperature(currentVitals.temperature);
+  currentVitals.heartRateCondition = conditionHeartRate(currentVitals.heartRate);
+  currentVitals.spo2Condition = conditionSpo2(currentVitals.spo2);
+  currentVitals.gsrCondition = conditionGsr(currentVitals.gsr);
+
+  Serial.printf("[Sensors] T=%.2f HR=%d SpO2=%d GSR=%d\n",
+                currentVitals.temperature,
+                currentVitals.heartRate,
+                currentVitals.spo2,
+                currentVitals.gsr);
+}
+
+// ===================== HTTPS POST =====================
+bool sendData() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[HTTPS] WiFi down — skip send");
+    return false;
+  }
+
+  StaticJsonDocument<640> doc;
+  doc["patientId"] = DEFAULT_PATIENT_ID;
+  doc["deviceId"] = DEFAULT_DEVICE_ID;
+  doc["temperature"] = roundf(currentVitals.temperature * 100.0f) / 100.0f;
+  doc["temperatureCondition"] = currentVitals.temperatureCondition;
+  doc["heartRate"] = currentVitals.heartRate;
+  doc["heartRateCondition"] = currentVitals.heartRateCondition;
+  doc["spo2"] = currentVitals.spo2;
+  doc["spo2Condition"] = currentVitals.spo2Condition;
+  doc["gsr"] = currentVitals.gsr;
+  doc["gsrCondition"] = currentVitals.gsrCondition;
+  doc["timestamp"] = isoTimestamp();
+
+  String body;
+  serializeJson(doc, body);
+  Serial.println("[HTTPS] Payload:");
+  Serial.println(body);
+
+  secureClient.setInsecure();
+  bool ok = false;
 
   for (int attempt = 1; attempt <= MAX_HTTP_RETRIES; attempt++) {
     HTTPClient http;
     http.setTimeout(HTTP_TIMEOUT_MS);
     http.setReuse(false);
 
-    // TLS to Render — skip cert store (typical for ESP32 + cloud hosts)
-    secureClient.setInsecure();
+    ledSending();
+    Serial.printf("[HTTPS] POST %d/%d → %s\n", attempt, MAX_HTTP_RETRIES, BACKEND_VITALS_URL);
 
-    Serial.printf("[HTTPS] POST attempt %d/%d → %s\n", attempt, MAX_HTTP_RETRIES, BACKEND_DATA_URL);
-
-    if (!http.begin(secureClient, BACKEND_DATA_URL)) {
-      Serial.println("[HTTPS] http.begin failed");
-      delay(500 * attempt);
+    if (!http.begin(secureClient, BACKEND_VITALS_URL)) {
+      Serial.println("[HTTPS] begin() failed");
+      ledBackendError();
+      delay(400 * attempt);
       continue;
     }
 
     http.addHeader("Content-Type", "application/json");
-
-    int httpCode = http.POST(jsonBody);
+    int code = http.POST(body);
     String response = http.getString();
     http.end();
 
-    Serial.printf("[HTTPS] Response code: %d\n", httpCode);
-    if (response.length() > 0) {
-      Serial.println("[HTTPS] Response body:");
-      Serial.println(response);
-    }
+    Serial.printf("[HTTPS] Response: %d\n", code);
+    if (response.length() > 0) Serial.println(response);
 
-    if (httpCode > 0 && httpCode < 300) {
-      success = true;
+    if (code > 0 && code < 300) {
+      ok = true;
+      ledConnectedOk();
       break;
     }
 
-    Serial.println("[HTTPS] Request failed, retrying...");
-    delay(1000 * attempt);
+    ledBackendError();
+    Serial.println("[HTTPS] retry...");
+    delay(800 * attempt);
   }
 
-  return success;
+  return ok;
 }
 
+// ===================== SETUP / LOOP =====================
 void setup() {
   Serial.begin(115200);
-  delay(500);
-  Serial.println();
-  Serial.println("=== Smart Glove WiFi → Render (HTTPS) ===");
-  Serial.println(BACKEND_DATA_URL);
+  delay(300);
+  Serial.println("\n=== Smart Glove WiFi IoT ===");
 
-  pinMode(PIN_TEMP, INPUT);
-  pinMode(PIN_HR, INPUT);
-  pinMode(PIN_SPO2, INPUT);
-  pinMode(PIN_GSR, INPUT);
+  pinMode(LED_WIFI, OUTPUT);
+  pinMode(LED_CONNECTED, OUTPUT);
+  pinMode(LED_SENDING, OUTPUT);
+  pinMode(LED_ERROR, OUTPUT);
+  ledAllOff();
 
+  initSensors();
   connectWiFi();
+
+  lastSensorMs = millis();
   lastPostMs = millis();
   lastWifiCheckMs = millis();
 }
 
 void loop() {
-  unsigned long now = millis();
+  const uint32_t now = millis();
 
-  if (now - lastWifiCheckMs >= WIFI_RECONNECT_INTERVAL_MS) {
+  if (now - lastWifiCheckMs >= WIFI_CHECK_MS) {
     lastWifiCheckMs = now;
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("[WiFi] Lost connection — reconnecting");
-      WiFi.disconnect();
-      connectWiFi();
-    }
+    reconnectIfNeeded();
+  }
+
+  if (now - lastSensorMs >= SENSOR_INTERVAL_MS) {
+    lastSensorMs = now;
+    readSensors();
   }
 
   if (now - lastPostMs >= POST_INTERVAL_MS) {
     lastPostMs = now;
-    if (!postSensorDataWithRetry()) {
-      if (WiFi.status() != WL_CONNECTED) {
-        connectWiFi();
-      }
+    if (!sendData()) {
+      reconnectIfNeeded();
     }
   }
 
-  delay(10);
+  yield();
 }

@@ -44,7 +44,13 @@ const smartGloveSchema = new mongoose.Schema({
   gsrCondition: {
     type: String,
     required: false,
-    default: 'Low',
+    default: 'Normal',
+  },
+  overallRiskLevel: {
+    type: String,
+    required: false,
+    default: 'Normal',
+    index: true,
   },
   status: {
     type: String,
@@ -84,6 +90,7 @@ const smartGloveSchema = new mongoose.Schema({
   deviceId: {
     type: String,
     required: false,
+    index: true,
   },
   timestamp: {
     type: Date,
