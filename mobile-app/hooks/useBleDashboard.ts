@@ -5,6 +5,7 @@ import type { Device } from 'react-native-ble-plx';
 import { postSensorDataDebounced, type PostSensorResponse } from '@/services/apiService';
 import {
   bleService,
+  BLE_CONNECT_TIMEOUT_MS,
   DEFAULT_PATIENT_ID,
   isBleSupported,
   type BleSensorPacket,
@@ -22,9 +23,13 @@ export type BleConnectionStatus =
 type PermissionState = 'unknown' | 'granted' | 'denied';
 
 async function requestBlePermissions(): Promise<PermissionState> {
-  if (Platform.OS !== 'android') return 'granted';
+  if (Platform.OS !== 'android') {
+    console.log('[BLE][Permissions] iOS — handled via Info.plist');
+    return 'granted';
+  }
 
   const permissions: string[] = [];
+
   if (Platform.Version >= 31) {
     permissions.push(
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
@@ -35,13 +40,47 @@ async function requestBlePermissions(): Promise<PermissionState> {
     permissions.push(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
   }
 
+  if (Platform.Version >= 33) {
+    permissions.push(PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES);
+  }
+
+  console.log('[BLE][Permissions] Requesting:', permissions);
   const result = await PermissionsAndroid.requestMultiple(permissions);
   const granted = permissions.every((perm) => result[perm] === PermissionsAndroid.RESULTS.GRANTED);
+
+  if (!granted) {
+    const denied = permissions.filter((p) => result[p] !== PermissionsAndroid.RESULTS.GRANTED);
+    console.log('[BLE][Permissions] Denied:', denied);
+  } else {
+    console.log('[BLE][Permissions] All granted');
+  }
+
   return granted ? 'granted' : 'denied';
 }
 
 export function deviceDisplayName(device: Device): string {
-  return device.name?.trim() || device.localName?.trim() || 'Unnamed Device';
+  const name = device.name?.trim();
+  const local = device.localName?.trim();
+  if (name && local && name !== local) return `${name} (${local})`;
+  return name || local || 'Unnamed Device';
+}
+
+function sortDevicesByRssi(list: Device[]): Device[] {
+  return [...list].sort((a, b) => {
+    const ra = a.rssi ?? -999;
+    const rb = b.rssi ?? -999;
+    return rb - ra;
+  });
+}
+
+function upsertDevice(prev: Device[], incoming: Device): Device[] {
+  const idx = prev.findIndex((d) => d.id === incoming.id);
+  if (idx >= 0) {
+    const next = [...prev];
+    next[idx] = incoming;
+    return sortDevicesByRssi(next);
+  }
+  return sortDevicesByRssi([...prev, incoming]);
 }
 
 export interface UseBleDashboardOptions {
@@ -56,6 +95,7 @@ export function useBleDashboard(options: UseBleDashboardOptions = {}) {
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
+  const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<BleConnectionStatus>('idle');
   const [livePacket, setLivePacket] = useState<BleSensorPacket | null>(null);
   const [lastRaw, setLastRaw] = useState('--');
@@ -64,8 +104,13 @@ export function useBleDashboard(options: UseBleDashboardOptions = {}) {
   const [lastBackendAt, setLastBackendAt] = useState<string | null>(null);
 
   const seenDeviceIds = useRef(new Set<string>());
+  const isScanningRef = useRef(false);
   const optionsRef = useRef(options);
   optionsRef.current = options;
+
+  useEffect(() => {
+    isScanningRef.current = isScanning;
+  }, [isScanning]);
 
   const refreshBluetoothState = useCallback(async () => {
     if (!bleSupported) {
@@ -93,6 +138,9 @@ export function useBleDashboard(options: UseBleDashboardOptions = {}) {
   const startScan = useCallback(async () => {
     if (!bleSupported) return;
 
+    console.log('[BLE][UI] startScan requested');
+    bleService.stopScan();
+
     setBleError(null);
     setDevices([]);
     seenDeviceIds.current = new Set();
@@ -105,81 +153,100 @@ export function useBleDashboard(options: UseBleDashboardOptions = {}) {
       return;
     }
 
-    await refreshBluetoothState();
+    const state = await bleService.getBluetoothState();
+    setBluetoothState(state);
+    if (state !== 'PoweredOn') {
+      setBleError(`Bluetooth is not ready (${state}). Enable Bluetooth and try again.`);
+      setConnectionStatus('error');
+      return;
+    }
+
     setIsScanning(true);
     setConnectionStatus('scanning');
 
     bleService.startScan(
       (device) => {
-        if (!device || !device.name) return;
+        if (!device?.id) return;
 
-        // 🔥 ONLY allow your ESP32
-        if (device.name !== 'Health_Glove_ESP32') return;
-
-        if (seenDeviceIds.current.has(device.id)) return;
         seenDeviceIds.current.add(device.id);
-        setDevices((prev) => [...prev, device]);
-
-        // Optional fast auto-connect
-        // stopScan();
-        // void connectToDevice(device);
+        setDevices((prev) => upsertDevice(prev, device));
       },
       (message) => {
+        console.log('[BLE][UI] scan error callback:', message);
         setIsScanning(false);
-        setConnectionStatus('error');
+        setConnectionStatus((s) => (s === 'scanning' ? 'error' : s));
         setBleError(message);
       }
     );
-  }, [bleSupported, refreshBluetoothState]);
+  }, [bleSupported]);
 
   const stopScan = useCallback(() => {
+    console.log('[BLE][UI] stopScan');
     bleService.stopScan();
     setIsScanning(false);
-    if (connectionStatus === 'scanning') {
-      setConnectionStatus('idle');
-    }
-  }, [connectionStatus]);
+    setConnectionStatus((s) => (s === 'scanning' ? 'idle' : s));
+  }, []);
 
   const connectToDevice = useCallback(
     async (device: Device) => {
       if (!bleSupported) return;
+      if (connectingDeviceId) return;
+
+      console.log('[BLE][UI] connect tapped:', device.id);
+      setBleError(null);
+      stopScan();
+      setConnectingDeviceId(device.id);
+      setConnectionStatus('connecting');
 
       try {
-        setBleError(null);
-        stopScan();
-        setConnectionStatus('connecting');
-
-        const connected = await bleService.connect(device.id);
+        const connected = await bleService.connect(device.id, {
+          timeoutMs: BLE_CONNECT_TIMEOUT_MS,
+          autoConnect: false,
+        });
+        console.log('[BLE][UI] connect success:', connected.id);
         setConnectedDevice(connected);
         setConnectionStatus('connected');
 
         bleService.subscribeToVitals({
           defaultPatientId: DEFAULT_PATIENT_ID,
-          onRaw: (raw) => setLastRaw(raw),
+          onRaw: (raw) => {
+            console.log('[BLE][UI] raw vitals:', raw);
+            setLastRaw(raw);
+          },
           onPacket: (packet) => {
+            console.log('[BLE][UI] parsed vitals packet:', packet);
             setLivePacket(packet);
             setConnectionStatus('subscribed');
             void handleBackendPost(packet);
           },
           onError: (message) => {
+            console.log('[BLE][UI] vitals subscription error:', message);
             setBleError(message);
             setConnectionStatus('error');
           },
         });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Connection failed';
+        console.log('[BLE][UI] connect failed:', message);
         setBleError(message);
         setConnectionStatus('error');
+        setConnectedDevice(null);
+      } finally {
+        setConnectingDeviceId(null);
       }
     },
-    [bleSupported, handleBackendPost, stopScan]
+    [bleSupported, connectingDeviceId, handleBackendPost, stopScan]
   );
 
   const disconnect = useCallback(async () => {
+    console.log('[BLE][UI] disconnect');
     await bleService.disconnect();
     setConnectedDevice(null);
+    setConnectingDeviceId(null);
     setConnectionStatus('disconnected');
     setIsScanning(false);
+    setLivePacket(null);
+    setLastRaw('--');
   }, []);
 
   useEffect(() => {
@@ -196,9 +263,22 @@ export function useBleDashboard(options: UseBleDashboardOptions = {}) {
       await refreshBluetoothState();
     })();
 
+    const unwatch = bleService.watchBluetoothState((state) => {
+      setBluetoothState(state);
+      if (state !== 'PoweredOn' && isScanningRef.current) {
+        console.log('[BLE][UI] radio off while scanning — stopping scan');
+        bleService.stopScan();
+        setIsScanning(false);
+        setConnectionStatus('idle');
+      }
+    });
+
     return () => {
+      console.log('[BLE][UI] cleanup — stop scan, disconnect, destroy manager');
+      unwatch();
       bleService.stopScan();
       void bleService.disconnect();
+      bleService.destroy();
     };
   }, [bleSupported, refreshBluetoothState]);
 
@@ -209,6 +289,7 @@ export function useBleDashboard(options: UseBleDashboardOptions = {}) {
     isScanning,
     devices,
     connectedDevice,
+    connectingDeviceId,
     connectionStatus,
     livePacket,
     lastRaw,
@@ -220,5 +301,6 @@ export function useBleDashboard(options: UseBleDashboardOptions = {}) {
     connectToDevice,
     disconnect,
     refreshBluetoothState,
+    deviceDisplayName,
   };
 }

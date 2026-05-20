@@ -302,6 +302,7 @@ export default function DashboardScreen() {
             isScanning={ble.isScanning}
             connectionStatus={ble.connectionStatus}
             connectedDevice={ble.connectedDevice}
+            connectingDeviceId={ble.connectingDeviceId}
             devices={ble.devices}
             livePacket={ble.livePacket}
             lastRaw={ble.lastRaw}
