@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,28 +11,13 @@ import {
   View,
 } from 'react-native';
 import PatientCard, { Patient } from '@/components/PatientCard';
-import BlePanel from '@/components/BlePanel';
-import { getApiBaseUrl } from '@/constants/api';
-import { useBleDashboard } from '@/hooks/useBleDashboard';
-import type { PostSensorResponse } from '@/services/apiService';
-import type { BleSensorPacket } from '@/services/BLEService';
+import WiFiStatusPanel from '@/components/WiFiStatusPanel';
+import { usePatientPolling } from '@/hooks/usePatientPolling';
+import type { PatientRecord } from '@/services/apiService';
+
 type PatientStatusFilter = 'All' | 'Critical' | 'High' | 'Moderate' | 'Low';
 const STATUS_FILTERS: PatientStatusFilter[] = ['All', 'Critical', 'High', 'Moderate', 'Low'];
-
-const API_BASE_URL = getApiBaseUrl();
-const API_ENDPOINT = `${API_BASE_URL}/api/all-patients`;
 const POLL_INTERVAL_MS = 2000;
-
-interface ApiResponse {
-  patients?: Array<Partial<Patient>>;
-}
-
-interface RawPatient extends Partial<Patient> {
-  _id?: string;
-  deviceId?: string;
-  patientId?: string;
-  severity?: string;
-}
 
 function formatPatientTimestamp(ts: unknown): string {
   if (ts == null) return '--';
@@ -56,17 +41,20 @@ function normalizeStatus(rawStatus: unknown): Patient['status'] {
   return 'Unknown';
 }
 
-function rawToPatient(item: RawPatient): Patient {
+function normalizeCondition(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length === 0) return '—';
+  return value.trim();
+}
+
+function recordToPatient(item: PatientRecord): Patient {
   const resolvedId =
     typeof item?.patientId === 'string' && item.patientId.trim().length > 0
       ? item.patientId
       : typeof item?.id === 'string' && item.id.trim().length > 0
         ? item.id
         : typeof item?._id === 'string' && item._id.trim().length > 0
-          ? item._id
-          : typeof item?.deviceId === 'string' && item.deviceId.trim().length > 0
-            ? item.deviceId
-            : 'unknown-id';
+          ? String(item._id)
+          : 'unknown-id';
 
   return {
     id: resolvedId,
@@ -75,6 +63,10 @@ function rawToPatient(item: RawPatient): Patient {
     heartRate: typeof item?.heartRate === 'number' ? item.heartRate : null,
     spo2: typeof item?.spo2 === 'number' ? item.spo2 : null,
     gsr: typeof item?.gsr === 'number' ? item.gsr : null,
+    temperatureCondition: normalizeCondition(item.temperatureCondition),
+    heartRateCondition: normalizeCondition(item.heartRateCondition),
+    spo2Condition: normalizeCondition(item.spo2Condition),
+    gsrCondition: normalizeCondition(item.gsrCondition),
     stress: typeof item?.stress === 'number' ? item.stress : null,
     status: normalizeStatus(item?.status || item?.severity),
     issues: Array.isArray(item?.issues)
@@ -91,161 +83,24 @@ function rawToPatient(item: RawPatient): Patient {
   };
 }
 
-function patientFromBackendEntry(
-  packet: BleSensorPacket,
-  data: Record<string, unknown>
-): Patient {
-  return rawToPatient({
-    patientId: String(data.patientId ?? packet.patientId),
-    name: typeof data.name === 'string' ? data.name : packet.patientId,
-    temperature: typeof data.temperature === 'number' ? data.temperature : packet.temperature,
-    heartRate: typeof data.heartRate === 'number' ? data.heartRate : packet.heartRate,
-    spo2: typeof data.spo2 === 'number' ? data.spo2 : packet.spo2,
-    gsr: typeof data.gsr === 'number' ? data.gsr : packet.gsr,
-    stress: typeof data.stress === 'number' ? data.stress : null,
-    status: data.status,
-    severity: data.severity,
-    issues: data.issues as string[] | undefined,
-    measures: data.measures as string[] | undefined,
-    recommendation: data.recommendation as string | undefined,
-    timestamp: data.timestamp,
-  });
-}
-
-function patientFromLivePacket(packet: BleSensorPacket): Patient {
-  return {
-    id: packet.patientId,
-    name: packet.patientId,
-    temperature: packet.temperature,
-    heartRate: packet.heartRate,
-    spo2: packet.spo2,
-    gsr: packet.gsr,
-    stress: null,
-    status: 'Unknown',
-    issues: [],
-    measures: [],
-    recommendation: 'Sending to backend…',
-    timestamp: new Date().toLocaleString(),
-  };
-}
-
 export default function DashboardScreen() {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [offline, setOffline] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<PatientStatusFilter>('All');
-  const [refreshing, setRefreshing] = useState(false);
   const [criticalBanner, setCriticalBanner] = useState<string | null>(null);
 
-  const firstLoadRef = useRef(true);
-  const fetchPatientsRef = useRef<((signal?: AbortSignal) => Promise<void>) | null>(null);
-
-  const mergePatient = useCallback((incoming: Patient) => {
-    setPatients((prev) => {
-      const idx = prev.findIndex((p) => p.id === incoming.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = { ...next[idx], ...incoming };
-        return next;
-      }
-      return [incoming, ...prev];
-    });
+  const handleCritical = useCallback((patientId: string, name: string) => {
+    setCriticalBanner(`CRITICAL: ${name} (${patientId}) — seek immediate attention`);
   }, []);
 
-  const handleBackendResponse = useCallback(
-    (packet: BleSensorPacket, response: PostSensorResponse) => {
-      const saved = response.data;
-      if (saved && typeof saved === 'object') {
-        const merged = patientFromBackendEntry(packet, saved);
-        mergePatient(merged);
-        if (merged.status === 'Critical') {
-          setCriticalBanner(`CRITICAL: ${merged.name} (${merged.id}) — seek immediate attention`);
-        }
-      }
-      void fetchPatientsRef.current?.();
-    },
-    [mergePatient]
-  );
-
-  const ble = useBleDashboard({
-    onBackendResponse: handleBackendResponse,
-    onPipelineError: (message) => setError(message),
+  const polling = usePatientPolling({
+    pollIntervalMs: POLL_INTERVAL_MS,
+    onCriticalDetected: handleCritical,
   });
 
-  useEffect(() => {
-    if (ble.livePacket) {
-      mergePatient(patientFromLivePacket(ble.livePacket));
-    }
-  }, [ble.livePacket, mergePatient]);
-
-  const fetchPatients = useCallback(async (signal?: AbortSignal) => {
-    try {
-      if (firstLoadRef.current) setLoading(true);
-      console.log('[Dashboard] Fetching patients:', API_ENDPOINT);
-
-      const response = await fetch(API_ENDPOINT, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal,
-      });
-
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || `Server returned ${response.status}`);
-      }
-
-      const json = (await response.json()) as ApiResponse | Array<RawPatient>;
-      const payload: RawPatient[] = Array.isArray(json)
-        ? json
-        : Array.isArray(json?.patients)
-          ? json.patients
-          : [];
-
-      const normalized = payload.map(rawToPatient).filter((p) => p.id !== 'unknown-id');
-      setPatients(normalized);
-
-      setLastUpdated(new Date().toISOString());
-      setRetryCount(0);
-      setOffline(false);
-      setError(null);
-
-      const critical = normalized.find((p) => p.status === 'Critical');
-      if (critical) {
-        setCriticalBanner(`CRITICAL: ${critical.name} (${critical.id})`);
-      } else if (!ble.livePacket) {
-        setCriticalBanner(null);
-      }
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      const message = err instanceof Error ? err.message : 'Unable to fetch patient data';
-      console.log('[Dashboard] Fetch error:', message);
-      setRetryCount((c) => c + 1);
-      setOffline(true);
-      setError(message);
-    } finally {
-      if (firstLoadRef.current) {
-        setLoading(false);
-        firstLoadRef.current = false;
-      }
-      setRefreshing(false);
-    }
-  }, [ble.livePacket]);
-
-  fetchPatientsRef.current = fetchPatients;
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetchPatients(controller.signal);
-    const interval = setInterval(() => void fetchPatients(), POLL_INTERVAL_MS);
-    return () => {
-      clearInterval(interval);
-      controller.abort();
-    };
-  }, [fetchPatients]);
+  const patients = useMemo(
+    () => polling.records.map(recordToPatient).filter((p) => p.id !== 'unknown-id'),
+    [polling.records]
+  );
 
   const filteredPatients = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -259,12 +114,6 @@ export default function DashboardScreen() {
     });
   }, [filterStatus, patients, searchQuery]);
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    const controller = new AbortController();
-    void fetchPatients(controller.signal).finally(() => controller.abort());
-  }, [fetchPatients]);
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -272,13 +121,16 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
-        nestedScrollEnabled
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#7C3AED" />
+          <RefreshControl
+            refreshing={polling.refreshing}
+            onRefresh={polling.refresh}
+            tintColor="#7C3AED"
+          />
         }
       >
         <Text style={styles.title}>Doctor Dashboard</Text>
-        <Text style={styles.subtitle}>ESP32 → BLE → Backend → ML → Live vitals</Text>
+        <Text style={styles.subtitle}>ESP32 → WiFi → Backend → Live vitals</Text>
 
         {criticalBanner ? (
           <View style={styles.criticalBanner}>
@@ -289,31 +141,15 @@ export default function DashboardScreen() {
           </View>
         ) : null}
 
-        <Text style={styles.networkInfo}>
-          Cloud: {offline ? 'Offline' : 'Connected'}
-          {lastUpdated ? ` · ${new Date(lastUpdated).toLocaleTimeString()}` : ''}
-          {ble.lastBackendAt ? ` · BLE POST ${new Date(ble.lastBackendAt).toLocaleTimeString()}` : ''}
-        </Text>
-        {retryCount > 0 && <Text style={styles.retryText}>API retries: {retryCount}</Text>}
-
-        <View style={styles.bleSection}>
-          <BlePanel
-            bleSupported={ble.bleSupported}
-            isScanning={ble.isScanning}
-            connectionStatus={ble.connectionStatus}
-            connectedDevice={ble.connectedDevice}
-            devices={ble.devices}
-            livePacket={ble.livePacket}
-            lastRaw={ble.lastRaw}
-            bleError={ble.bleError}
-            postsSent={ble.postsSent}
-            bluetoothState={ble.bluetoothState}
-            onStartScan={() => void ble.startScan()}
-            onStopScan={ble.stopScan}
-            onConnect={(d) => void ble.connectToDevice(d)}
-            onDisconnect={() => void ble.disconnect()}
-          />
-        </View>
+        <WiFiStatusPanel
+          offline={polling.offline}
+          lastUpdated={polling.lastUpdated}
+          patientCount={patients.length}
+          pollIntervalMs={POLL_INTERVAL_MS}
+        />
+        {polling.retryCount > 0 && (
+          <Text style={styles.retryText}>API retries: {polling.retryCount}</Text>
+        )}
 
         <View style={styles.dashboardCard}>
           <Text style={styles.dashboardTitle}>Patient Dashboard</Text>
@@ -349,23 +185,25 @@ export default function DashboardScreen() {
             })}
           </View>
 
-          {loading && (
+          {polling.loading && (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#7C3AED" />
               <Text style={styles.loadingText}>Loading patients…</Text>
             </View>
           )}
 
-          {error && !loading && (
+          {polling.error && !polling.loading && (
             <View style={styles.errorContainer}>
               <Text style={styles.apiErrorTitle}>API issue</Text>
-              <Text style={styles.errorDetail}>{error}</Text>
+              <Text style={styles.errorDetail}>{polling.error}</Text>
             </View>
           )}
 
-          {!loading &&
+          {!polling.loading &&
             (filteredPatients.length === 0 ? (
-              <Text style={styles.emptyText}>{error ? 'Waiting for cloud sync…' : 'No patients yet'}</Text>
+              <Text style={styles.emptyText}>
+                {polling.error ? 'Waiting for backend…' : 'No patients yet — start ESP32 WiFi uplink'}
+              </Text>
             ) : (
               filteredPatients.map((patient) => (
                 <View key={patient.id} style={styles.patientCardWrap}>
@@ -388,7 +226,6 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
     flexGrow: 1,
   },
-  bleSection: { marginTop: 12 },
   dashboardCard: {
     marginTop: 12,
     marginBottom: 24,
@@ -404,8 +241,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 28, fontWeight: '900', color: '#F8FAFC' },
   subtitle: { marginTop: 6, fontSize: 14, color: '#94A3B8', marginBottom: 12 },
-  networkInfo: { color: '#93C5FD', fontSize: 12, marginBottom: 4 },
-  retryText: { color: '#FCA5A5', fontSize: 12, marginBottom: 10 },
+  retryText: { color: '#FCA5A5', fontSize: 12, marginTop: 8, marginBottom: 4 },
   criticalBanner: {
     backgroundColor: '#7F1D1D',
     borderRadius: 12,

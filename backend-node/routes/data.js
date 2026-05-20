@@ -18,6 +18,35 @@ function isCriticalStatus(status) {
   return normalizeStatusUpper(status) === 'CRITICAL';
 }
 
+const SEVERITY_RANK = { Critical: 4, High: 3, Moderate: 2, Low: 1, Unknown: 0 };
+
+function severityFromConditionLabel(condition) {
+  const c = String(condition || '').trim().toLowerCase();
+  if (c === 'critical') return 'Critical';
+  if (c === 'high') return 'High';
+  if (c === 'moderate') return 'Moderate';
+  if (c === 'low' || c === 'normal') return 'Low';
+  return null;
+}
+
+function worstSeverity(...labels) {
+  let best = 'Low';
+  let bestRank = SEVERITY_RANK.Low;
+  for (const label of labels) {
+    if (!label) continue;
+    const rank = SEVERITY_RANK[label] ?? 0;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = label;
+    }
+  }
+  return best;
+}
+
+function isAnyEsp32ConditionCritical(conditions) {
+  return conditions.some((c) => String(c || '').trim().toLowerCase() === 'critical');
+}
+
 let history = [];
 
 function toFiniteNumber(value) {
@@ -119,6 +148,10 @@ router.post('/data', async (req, res) => {
     heartRate: rawHeartRate,
     spo2: rawSpo2,
     gsr: rawGsr,
+    temperatureCondition,
+    heartRateCondition,
+    spo2Condition,
+    gsrCondition,
     deviceId,
     id,
     patientId,
@@ -177,17 +210,40 @@ router.post('/data', async (req, res) => {
   }
 
   const level = String(mlPrediction?.level || mlPrediction?.status || 'Low');
-  const severity = ['Critical', 'High', 'Moderate', 'Low'].includes(level)
+  const mlSeverity = ['Critical', 'High', 'Moderate', 'Low'].includes(level)
     ? level
     : getSeverityFromStress(mlPrediction.stress || 0);
 
+  const esp32Conditions = [
+    temperatureCondition,
+    heartRateCondition,
+    spo2Condition,
+    gsrCondition,
+  ];
+  const esp32Severities = esp32Conditions
+    .map(severityFromConditionLabel)
+    .filter(Boolean);
+  const esp32Severity = worstSeverity(...esp32Severities, 'Low');
+  const severity = worstSeverity(mlSeverity, esp32Severity);
+  const esp32Critical = isAnyEsp32ConditionCritical(esp32Conditions);
+
   const mlStatus = normalizeStatusUpper(severity);
   console.log('🧠 ML STATUS:', mlStatus);
+  console.log('[DATA][ESP32_CONDITIONS]', {
+    temperatureCondition,
+    heartRateCondition,
+    spo2Condition,
+    gsrCondition,
+    esp32Severity,
+    esp32Critical,
+  });
 
-  // TEMPORARY TEST OVERRIDE — set FORCE_CRITICAL_FOR_TESTING=false to disable
-  const status = FORCE_CRITICAL_FOR_TESTING ? 'CRITICAL' : mlStatus;
+  let status = mlStatus;
   if (FORCE_CRITICAL_FOR_TESTING) {
+    status = 'CRITICAL';
     console.log('⚠️ FORCE_CRITICAL_FOR_TESTING enabled — effective status:', status);
+  } else if (esp32Critical || isCriticalStatus(mlStatus)) {
+    status = 'CRITICAL';
   }
 
   const result = {
@@ -197,6 +253,10 @@ router.post('/data', async (req, res) => {
     heartRate,
     spo2,
     gsr,
+    temperatureCondition: String(temperatureCondition ?? 'Low').trim() || 'Low',
+    heartRateCondition: String(heartRateCondition ?? 'Low').trim() || 'Low',
+    spo2Condition: String(spo2Condition ?? 'Low').trim() || 'Low',
+    gsrCondition: String(gsrCondition ?? 'Low').trim() || 'Low',
     status: severity,
     severity,
     predictionLevel: level,
@@ -338,8 +398,7 @@ router.get('/history', async (req, res) => {
   }
 });
 
-// GET /api/all-patients
-router.get('/all-patients', async (req, res) => {
+async function getAllPatientsHandler(req, res) {
   console.log('[DATA][ALL_PATIENTS][REQUEST]', req.ip, req.headers['user-agent'] || '');
   try {
     const records = await SmartGlove.find().sort({ timestamp: -1 }).limit(500).lean();
@@ -372,6 +431,12 @@ router.get('/all-patients', async (req, res) => {
       .slice(0, 100);
     return res.json({ patients: fallback });
   }
-});
+}
+
+// GET /api/patients — latest record per patient (mobile app)
+router.get('/patients', getAllPatientsHandler);
+
+// GET /api/all-patients — alias
+router.get('/all-patients', getAllPatientsHandler);
 
 module.exports = router;

@@ -11,6 +11,10 @@ export interface Patient {
   heartRate: number | null;
   spo2: number | null;
   gsr: number | null;
+  temperatureCondition: string;
+  heartRateCondition: string;
+  spo2Condition: string;
+  gsrCondition: string;
   stress: number | null;
   status: PatientStatus;
   issues: string[];
@@ -51,6 +55,14 @@ const formatValue = (value: number | null, suffix = '') => {
   return typeof value === 'number' ? `${value}${suffix}` : '--';
 };
 
+function conditionStyle(condition: string): { color: string } {
+  const c = condition.trim().toLowerCase();
+  if (c === 'critical') return { color: '#F87171' };
+  if (c === 'high') return { color: '#FB923C' };
+  if (c === 'moderate') return { color: '#FACC15' };
+  return { color: '#94A3B8' };
+}
+
 const PatientCard = React.memo(function PatientCard({ patient }: { patient: Patient }) {
   const router = useRouter();
   const statusStyle = STATUS_STYLES[patient.status] ?? STATUS_STYLES.Unknown;
@@ -76,19 +88,39 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
 
       <View style={styles.row}>
         <Text style={styles.vitalLabel}>🌡 Temperature</Text>
-        <Text style={styles.vitalValue}>{formatValue(patient.temperature, '°C')}</Text>
+        <View style={styles.vitalRight}>
+          <Text style={styles.vitalValue}>{formatValue(patient.temperature, '°C')}</Text>
+          <Text style={[styles.conditionText, conditionStyle(patient.temperatureCondition)]}>
+            {patient.temperatureCondition}
+          </Text>
+        </View>
       </View>
       <View style={styles.row}>
         <Text style={styles.vitalLabel}>❤️ Heart Rate</Text>
-        <Text style={styles.vitalValue}>{formatValue(patient.heartRate, ' bpm')}</Text>
+        <View style={styles.vitalRight}>
+          <Text style={styles.vitalValue}>{formatValue(patient.heartRate, ' bpm')}</Text>
+          <Text style={[styles.conditionText, conditionStyle(patient.heartRateCondition)]}>
+            {patient.heartRateCondition}
+          </Text>
+        </View>
       </View>
       <View style={styles.row}>
         <Text style={styles.vitalLabel}>🫁 SpO₂</Text>
-        <Text style={styles.vitalValue}>{formatValue(patient.spo2, ' %')}</Text>
+        <View style={styles.vitalRight}>
+          <Text style={styles.vitalValue}>{formatValue(patient.spo2, ' %')}</Text>
+          <Text style={[styles.conditionText, conditionStyle(patient.spo2Condition)]}>
+            {patient.spo2Condition}
+          </Text>
+        </View>
       </View>
       <View style={styles.row}>
         <Text style={styles.vitalLabel}>⚡ GSR</Text>
-        <Text style={styles.vitalValue}>{formatValue(patient.gsr)}</Text>
+        <View style={styles.vitalRight}>
+          <Text style={styles.vitalValue}>{formatValue(patient.gsr)}</Text>
+          <Text style={[styles.conditionText, conditionStyle(patient.gsrCondition)]}>
+            {patient.gsrCondition}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.divider} />
@@ -180,10 +212,18 @@ const styles = StyleSheet.create({
     color: '#E2E8F0',
     fontSize: 14,
   },
+  vitalRight: {
+    alignItems: 'flex-end',
+  },
   vitalValue: {
     color: '#F8FAFC',
     fontSize: 15,
     fontWeight: '700',
+  },
+  conditionText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
   },
   divider: {
     height: 1,

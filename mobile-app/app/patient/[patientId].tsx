@@ -19,6 +19,10 @@ type RawPatient = Partial<Patient> & {
   patientId?: string;
   deviceId?: string;
   severity?: string;
+  temperatureCondition?: string;
+  heartRateCondition?: string;
+  spo2Condition?: string;
+  gsrCondition?: string;
 };
 
 function normalizeStatus(rawStatus: unknown): Patient['status'] {
@@ -58,6 +62,9 @@ export default function PatientDetailsScreen() {
         ? item.patientId
         : fallbackId;
 
+    const cond = (v: unknown) =>
+      typeof v === 'string' && v.trim().length > 0 ? v.trim() : '—';
+
     return {
       id,
       name:
@@ -66,6 +73,10 @@ export default function PatientDetailsScreen() {
       heartRate: typeof item?.heartRate === 'number' ? item.heartRate : null,
       spo2: typeof item?.spo2 === 'number' ? item.spo2 : null,
       gsr: typeof item?.gsr === 'number' ? item.gsr : null,
+      temperatureCondition: cond(item.temperatureCondition),
+      heartRateCondition: cond(item.heartRateCondition),
+      spo2Condition: cond(item.spo2Condition),
+      gsrCondition: cond(item.gsrCondition),
       stress: typeof item?.stress === 'number' ? item.stress : null,
       status: normalizeStatus(item?.status || item?.severity),
       issues: Array.isArray(item?.issues)
@@ -93,7 +104,7 @@ export default function PatientDetailsScreen() {
     setError(null);
 
     try {
-      const url = `${API_BASE_URL}/api/all-patients`;
+      const url = `${API_BASE_URL}/api/patients`;
       console.log('[PatientDetails] Fetching', url, 'for', resolvedId);
 
       const response = await fetch(url, {
