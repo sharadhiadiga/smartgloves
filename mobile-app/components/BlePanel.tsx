@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Platform,
   Pressable,
   StyleSheet,
@@ -76,6 +77,14 @@ export default function BlePanel({
 }: BlePanelProps) {
   const isConnected = Boolean(connectedDevice);
   const connectedColor = isConnected ? '#22C55E' : '#64748B';
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+
+  const selectedDevice = useMemo(() => {
+    if (!selectedDeviceId) return null;
+    return devices.find((d) => d.id === selectedDeviceId) ?? null;
+  }, [devices, selectedDeviceId]);
+
+  const isConnecting = connectionStatus === 'connecting';
 
   if (Platform.OS === 'web') {
     return (
@@ -121,6 +130,28 @@ export default function BlePanel({
         </Pressable>
       </View>
 
+      <View style={styles.buttonRow}>
+        <Pressable
+          style={[
+            styles.connectBtnWide,
+            (!selectedDevice || isConnected || isConnecting) && styles.btnDisabled,
+          ]}
+          onPress={() => selectedDevice && onConnect(selectedDevice)}
+          disabled={!selectedDevice || isConnected || isConnecting}
+        >
+          <Text style={styles.connectBtnWideText}>
+            {isConnecting ? 'Connecting…' : selectedDevice ? 'Connect' : 'Select a device'}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.disconnectBtnWide, !isConnected && styles.btnDisabled]}
+          onPress={onDisconnect}
+          disabled={!isConnected}
+        >
+          <Text style={styles.disconnectBtnWideText}>Disconnect</Text>
+        </Pressable>
+      </View>
+
       {isScanning && (
         <View style={styles.scanRow}>
           <ActivityIndicator color="#8B5CF6" size="small" />
@@ -130,29 +161,52 @@ export default function BlePanel({
 
       {bleError ? <Text style={styles.errorText}>{bleError}</Text> : null}
 
-      {devices.length > 0 && (
-        <View style={styles.deviceList}>
-          <Text style={styles.sectionLabel}>Discovered devices</Text>
-          {devices.slice(0, 6).map((device) => (
-            <View key={device.id} style={styles.deviceRow}>
-              <View style={styles.deviceInfo}>
-                <Text style={styles.deviceName}>{deviceDisplayName(device)}</Text>
-                <Text style={styles.deviceId}>{device.id}</Text>
-              </View>
+      <View style={styles.deviceList}>
+        <Text style={styles.sectionLabel}>
+          Discovered devices {devices.length > 0 ? `(${devices.length})` : ''}
+        </Text>
+
+        <FlatList
+          data={devices}
+          keyExtractor={(item) => item.id}
+          style={styles.deviceFlatList}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              {isScanning ? 'Scanning…' : 'No devices yet. Tap “Scan Devices”.'}
+            </Text>
+          }
+          renderItem={({ item }) => {
+            const selected = item.id === selectedDeviceId;
+            const connected = connectedDevice?.id === item.id;
+            return (
               <Pressable
-                style={styles.connectBtn}
-                onPress={() => onConnect(device)}
-                disabled={connectionStatus === 'connecting'}
+                onPress={() => {
+                  setSelectedDeviceId(item.id);
+                  if (!isConnected && !isConnecting) {
+                    onConnect(item);
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.deviceRow,
+                  selected && styles.deviceRowSelected,
+                  connected && styles.deviceRowConnected,
+                  pressed && styles.deviceRowPressed,
+                ]}
               >
-                <Text style={styles.connectBtnText}>Connect</Text>
+                <View style={styles.deviceInfo}>
+                  <View style={styles.deviceTitleRow}>
+                    <Text style={styles.deviceName}>{deviceDisplayName(item)}</Text>
+                    {connected ? <Text style={styles.connectedPill}>Connected</Text> : null}
+                    {selected && !connected ? <Text style={styles.selectedPill}>Selected</Text> : null}
+                  </View>
+                  <Text style={styles.deviceId}>{item.id}</Text>
+                </View>
               </Pressable>
-            </View>
-          ))}
-          {devices.length > 6 && (
-            <Text style={styles.meta}>+{devices.length - 6} more (scroll dashboard)</Text>
-          )}
-        </View>
-      )}
+            );
+          }}
+        />
+      </View>
 
       {connectedDevice && (
         <View style={styles.connectedBox}>
@@ -296,6 +350,14 @@ const styles = StyleSheet.create({
   deviceList: {
     marginTop: 4,
   },
+  deviceFlatList: {
+    maxHeight: 300,
+  },
+  emptyText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    paddingVertical: 8,
+  },
   deviceRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -306,14 +368,51 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     backgroundColor: '#0F172A',
   },
+  deviceRowSelected: {
+    borderColor: '#6366F1',
+    backgroundColor: '#0B1530',
+  },
+  deviceRowConnected: {
+    borderColor: '#22C55E',
+    backgroundColor: '#052014',
+  },
+  deviceRowPressed: {
+    opacity: 0.9,
+  },
   deviceInfo: {
     flex: 1,
     paddingRight: 8,
+  },
+  deviceTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   deviceName: {
     color: '#F1F5F9',
     fontWeight: '700',
     fontSize: 13,
+  },
+  connectedPill: {
+    color: '#052014',
+    backgroundColor: '#22C55E',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: '800',
+    overflow: 'hidden',
+  },
+  selectedPill: {
+    color: '#0B1020',
+    backgroundColor: '#A5B4FC',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: '800',
+    overflow: 'hidden',
   },
   deviceId: {
     color: '#64748B',
@@ -330,6 +429,32 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '700',
     fontSize: 12,
+  },
+  connectBtnWide: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  connectBtnWideText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  disconnectBtnWide: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#991B1B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disconnectBtnWideText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 13,
   },
   connectedBox: {
     marginTop: 8,
