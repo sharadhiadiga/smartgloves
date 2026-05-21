@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import PatientCard, { Patient } from '@/components/PatientCard';
 import { useRealtimeDashboard } from '@/hooks/useRealtimeDashboard';
-import { vitalToPatient } from '@/utils/vitals';
+import { formatUiLabel, vitalToPatient } from '@/utils/vitals';
 
 export default function PatientDashboardScreen() {
   const { patients, loading, refreshing, error, refresh } = useRealtimeDashboard();
@@ -46,7 +46,7 @@ export default function PatientDashboardScreen() {
             <View style={[styles.listItem, selectedId === p.id && styles.listItemOn]}>
               <Text style={styles.listName}>{p.name}</Text>
               <Text style={styles.listMeta}>
-                {p.overallRiskLevel || p.status} · {p.timestamp}
+                {formatUiLabel(p.overallRiskLevel || p.status)} · {p.timestamp}
               </Text>
             </View>
           </Pressable>

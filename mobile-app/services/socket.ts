@@ -1,6 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import { API_BASE_URL } from '@/constants/config';
 import type { VitalReading } from '@/types/vitals';
+import { normalizeVitalReading } from '@/utils/vitals';
 
 let socket: Socket | null = null;
 
@@ -44,7 +45,7 @@ export function connectRealtimeSocket(
 
   socket.on('vitals:update', (payload: VitalReading) => {
     console.log('[Socket.IO] vitals:update', payload.patientId);
-    onVitals(payload);
+    onVitals(normalizeVitalReading(payload));
   });
 
   if (onAlert) {

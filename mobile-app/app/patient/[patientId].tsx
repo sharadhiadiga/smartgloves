@@ -11,7 +11,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import PatientCard, { Patient } from '@/components/PatientCard';
 import { fetchPatientLatest } from '@/services/api';
-import { vitalToPatient } from '@/utils/vitals';
+import { formatUiLabel, normalizeRisk, vitalToPatient } from '@/utils/vitals';
 
 type RawPatient = Partial<Patient> & {
   _id?: string;
@@ -25,13 +25,7 @@ type RawPatient = Partial<Patient> & {
 };
 
 function normalizeStatus(rawStatus: unknown): Patient['status'] {
-  if (typeof rawStatus !== 'string') return 'Unknown';
-  const normalized = rawStatus.trim().toLowerCase();
-  if (normalized === 'critical') return 'Critical';
-  if (normalized === 'high') return 'High';
-  if (normalized === 'moderate') return 'Moderate';
-  if (normalized === 'low' || normalized === 'normal') return 'Normal';
-  return 'Unknown';
+  return normalizeRisk(rawStatus);
 }
 
 function formatPatientTimestamp(ts: unknown): string {

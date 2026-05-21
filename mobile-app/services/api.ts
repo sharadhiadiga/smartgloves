@@ -1,5 +1,6 @@
 import { API_BASE_URL, API_PATHS } from '@/constants/config';
 import type { AlertsResponse, DashboardResponse, VitalReading } from '@/types/vitals';
+import { normalizeVitalReading } from '@/utils/vitals';
 
 const MAX_RETRIES = 3;
 
@@ -40,16 +41,25 @@ export async function checkHealth(): Promise<{ status: string; database?: string
 }
 
 export async function fetchDashboard(): Promise<DashboardResponse> {
-  return fetchWithRetry<DashboardResponse>(`${API_BASE_URL}${API_PATHS.dashboard}`);
+  const data = await fetchWithRetry<DashboardResponse>(`${API_BASE_URL}${API_PATHS.dashboard}`);
+  return {
+    ...data,
+    patients: (data.patients ?? []).map(normalizeVitalReading),
+    alerts: (data.alerts ?? []).map(normalizeVitalReading),
+  };
 }
 
 export async function fetchAlerts(): Promise<AlertsResponse> {
-  return fetchWithRetry<AlertsResponse>(`${API_BASE_URL}${API_PATHS.alerts}`);
+  const data = await fetchWithRetry<AlertsResponse>(`${API_BASE_URL}${API_PATHS.alerts}`);
+  return {
+    ...data,
+    alerts: (data.alerts ?? []).map(normalizeVitalReading),
+  };
 }
 
 export async function fetchPatientLatest(patientId: string): Promise<VitalReading | null> {
   const json = await fetchWithRetry<{ success: boolean; data: VitalReading | null }>(
     `${API_BASE_URL}${API_PATHS.patientLatest(patientId)}`
   );
-  return json.data ?? null;
+  return json.data ? normalizeVitalReading(json.data) : null;
 }

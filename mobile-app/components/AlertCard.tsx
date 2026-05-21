@@ -1,9 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { VitalReading } from '@/types/vitals';
+import { formatUiLabel } from '@/utils/vitals';
 
 export default function AlertCard({ alert }: { alert: VitalReading }) {
-  const risk = alert.overallRiskLevel || alert.status || 'High';
+  const risk = formatUiLabel(alert.overallRiskLevel || alert.status || 'High');
   return (
     <View style={styles.card}>
       <Text style={styles.title}>🚨 {alert.name || alert.patientId}</Text>

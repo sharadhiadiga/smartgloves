@@ -5,6 +5,7 @@ import { POLL_INTERVAL_MS } from '@/constants/config';
 import { fetchAlerts, fetchDashboard } from '@/services/api';
 import { connectRealtimeSocket, disconnectRealtimeSocket } from '@/services/socket';
 import type { DashboardResponse, VitalReading } from '@/types/vitals';
+import { normalizeVitalReading } from '@/utils/vitals';
 
 export function useRealtimeDashboard(pollMs: number = POLL_INTERVAL_MS) {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
@@ -20,8 +21,12 @@ export function useRealtimeDashboard(pollMs: number = POLL_INTERVAL_MS) {
   const firstLoadRef = useRef(true);
 
   const mergeVital = useCallback((incoming: VitalReading) => {
-    const key = `${incoming.patientId}:${incoming.deviceId || 'default'}`;
-    patientsMapRef.current.set(key, { ...patientsMapRef.current.get(key), ...incoming });
+    const normalized = normalizeVitalReading(incoming);
+    const key = `${normalized.patientId}:${normalized.deviceId || 'default'}`;
+    patientsMapRef.current.set(key, {
+      ...patientsMapRef.current.get(key),
+      ...normalized,
+    });
 
     const patients = Array.from(patientsMapRef.current.values()).sort(
       (a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()
@@ -43,13 +48,13 @@ export function useRealtimeDashboard(pollMs: number = POLL_INTERVAL_MS) {
     setOffline(false);
     setError(null);
 
-    const risk = String(incoming.overallRiskLevel || incoming.status || '').toLowerCase();
-    if (risk === 'critical' && !knownCriticalRef.current.has(incoming.patientId)) {
-      knownCriticalRef.current.add(incoming.patientId);
+    const risk = String(normalized.overallRiskLevel || normalized.status || '').toLowerCase();
+    if (risk === 'critical' && !knownCriticalRef.current.has(normalized.patientId)) {
+      knownCriticalRef.current.add(normalized.patientId);
       void Notifications.scheduleNotificationAsync({
         content: {
           title: 'Critical patient alert',
-          body: `${incoming.name || incoming.patientId} requires attention`,
+          body: `${normalized.name || normalized.patientId} requires attention`,
           sound: true,
         },
         trigger: null,
@@ -63,10 +68,15 @@ export function useRealtimeDashboard(pollMs: number = POLL_INTERVAL_MS) {
       const data = await fetchDashboard();
       patientsMapRef.current.clear();
       for (const p of data.patients) {
-        const key = `${p.patientId}:${p.deviceId || 'default'}`;
-        patientsMapRef.current.set(key, p);
+        const normalized = normalizeVitalReading(p);
+        const key = `${normalized.patientId}:${normalized.deviceId || 'default'}`;
+        patientsMapRef.current.set(key, normalized);
       }
-      setDashboard(data);
+      setDashboard({
+        ...data,
+        patients: (data.patients ?? []).map(normalizeVitalReading),
+        alerts: (data.alerts ?? []).map(normalizeVitalReading),
+      });
       setLastUpdated(data.updatedAt || new Date().toISOString());
       setOffline(false);
       setError(null);

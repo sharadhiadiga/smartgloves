@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { normalizeConditionLabel, normalizeRisk } from '@/utils/vitals';
+import { formatUiLabel } from '@/utils/vitals';
 
 export type PatientStatus = 'Normal' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
 
@@ -27,12 +27,15 @@ export interface Patient {
   timestamp: string;
 }
 
-const STATUS_STYLES: Record<PatientStatus, { border: string; background: string; pill: string }> = {
-  Normal: {
-    border: '#16A34A',
-    background: '#062F1A',
-    pill: '#4ADE80',
-  },
+const NORMAL_STYLE = {
+  border: '#16A34A',
+  background: '#062F1A',
+  pill: '#4ADE80',
+};
+
+const STATUS_STYLES: Record<string, { border: string; background: string; pill: string }> = {
+  Normal: NORMAL_STYLE,
+  Low: NORMAL_STYLE,
   Moderate: {
     border: '#D97706',
     background: '#1E2A0F',
@@ -68,14 +71,10 @@ function conditionStyle(condition: string): { color: string } {
   return { color: '#94A3B8' };
 }
 
-function displayRiskLabel(patient: Patient): string {
-  return normalizeRisk(patient.overallRiskLevel || patient.status);
-}
-
 const PatientCard = React.memo(function PatientCard({ patient }: { patient: Patient }) {
   const router = useRouter();
-  const riskLabel = displayRiskLabel(patient);
-  const statusStyle = STATUS_STYLES[riskLabel] ?? STATUS_STYLES.Unknown;
+  const riskLabel = formatUiLabel(patient.overallRiskLevel || patient.status);
+  const statusStyle = STATUS_STYLES[riskLabel] ?? STATUS_STYLES.Normal;
 
   return (
     <Pressable
@@ -100,8 +99,8 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
         <Text style={styles.vitalLabel}>🌡 Temperature</Text>
         <View style={styles.vitalRight}>
           <Text style={styles.vitalValue}>{formatValue(patient.temperature, '°C')}</Text>
-          <Text style={[styles.conditionText, conditionStyle(normalizeConditionLabel(patient.temperatureCondition))]}>
-            {normalizeConditionLabel(patient.temperatureCondition)}
+          <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.temperatureCondition))]}>
+            {formatUiLabel(patient.temperatureCondition)}
           </Text>
         </View>
       </View>
@@ -109,8 +108,8 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
         <Text style={styles.vitalLabel}>❤️ Heart Rate</Text>
         <View style={styles.vitalRight}>
           <Text style={styles.vitalValue}>{formatValue(patient.heartRate, ' bpm')}</Text>
-          <Text style={[styles.conditionText, conditionStyle(normalizeConditionLabel(patient.heartRateCondition))]}>
-            {normalizeConditionLabel(patient.heartRateCondition)}
+          <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.heartRateCondition))]}>
+            {formatUiLabel(patient.heartRateCondition)}
           </Text>
         </View>
       </View>
@@ -118,8 +117,8 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
         <Text style={styles.vitalLabel}>🫁 SpO₂</Text>
         <View style={styles.vitalRight}>
           <Text style={styles.vitalValue}>{formatValue(patient.spo2, ' %')}</Text>
-          <Text style={[styles.conditionText, conditionStyle(normalizeConditionLabel(patient.spo2Condition))]}>
-            {normalizeConditionLabel(patient.spo2Condition)}
+          <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.spo2Condition))]}>
+            {formatUiLabel(patient.spo2Condition)}
           </Text>
         </View>
       </View>
@@ -127,8 +126,8 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
         <Text style={styles.vitalLabel}>⚡ GSR</Text>
         <View style={styles.vitalRight}>
           <Text style={styles.vitalValue}>{formatValue(patient.gsr)}</Text>
-          <Text style={[styles.conditionText, conditionStyle(normalizeConditionLabel(patient.gsrCondition))]}>
-            {normalizeConditionLabel(patient.gsrCondition)}
+          <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.gsrCondition))]}>
+            {formatUiLabel(patient.gsrCondition)}
           </Text>
         </View>
       </View>
