@@ -11,6 +11,7 @@ const {
   spo2Condition,
   gsrCondition,
   computeVitalConditions,
+  normalizeVitalsRecord,
 } = require('../services/vitalConditions');
 
 const DOCTOR_USER_ID = process.env.DOCTOR_USER_ID || 'doctor1';
@@ -25,21 +26,21 @@ function isCriticalStatus(status) {
   return normalizeStatusUpper(status) === 'CRITICAL';
 }
 
-const SEVERITY_RANK = { Critical: 4, High: 3, Moderate: 2, Low: 1, Unknown: 0 };
+const SEVERITY_RANK = { Critical: 4, High: 3, Moderate: 2, Normal: 1, Unknown: 0 };
 
 function severityFromConditionLabel(condition) {
   const c = String(condition || '').trim().toLowerCase();
   if (c === 'critical') return 'Critical';
   if (c === 'high') return 'High';
   if (c === 'moderate') return 'Moderate';
-  if (c === 'low' || c === 'normal') return 'Low';
+  if (c === 'low' || c === 'normal') return 'Normal';
   if (c === 'invalid') return 'Unknown';
   return null;
 }
 
 function worstSeverity(...labels) {
-  let best = 'Low';
-  let bestRank = SEVERITY_RANK.Low;
+  let best = 'Normal';
+  let bestRank = SEVERITY_RANK.Normal;
   for (const label of labels) {
     if (!label) continue;
     const rank = SEVERITY_RANK[label] ?? 0;
@@ -128,7 +129,7 @@ function severityFromVitals(vitals) {
     severityFromConditionLabel(conditions.heartRateCondition),
     severityFromConditionLabel(conditions.spo2Condition),
     severityFromConditionLabel(conditions.gsrCondition),
-    'Low'
+    'Normal'
   );
   return { conditions, severity };
 }
@@ -240,9 +241,9 @@ router.post('/data', async (req, res) => {
 
   const { conditions: computedConditions, severity: conditionSeverity } = severityFromVitals(sensorData);
 
-  const level = String(mlPrediction?.level || mlPrediction?.status || 'Low');
+  const level = String(mlPrediction?.level || mlPrediction?.status || 'Normal');
   const mlStress = Number.isFinite(mlPrediction?.stress) ? mlPrediction.stress : 0;
-  const mlSeverity = ['Critical', 'High', 'Moderate', 'Low', 'Unknown'].includes(level)
+  const mlSeverity = ['Critical', 'High', 'Moderate', 'Normal', 'Unknown'].includes(level)
     ? level
     : mlStress >= 80
       ? 'Critical'
@@ -250,7 +251,7 @@ router.post('/data', async (req, res) => {
         ? 'High'
         : mlStress >= 35
           ? 'Moderate'
-          : 'Low';
+          : 'Normal';
 
   const severity = worstSeverity(conditionSeverity, mlSeverity);
   const vitalConditions = computedConditions;
@@ -268,7 +269,7 @@ router.post('/data', async (req, res) => {
     status = 'CRITICAL';
   }
 
-  const result = {
+  const result = normalizeVitalsRecord({
     patientId: resolvedPatientId,
     name: typeof name === 'string' && name.trim().length > 0 ? name.trim() : undefined,
     temperature,
@@ -288,7 +289,7 @@ router.post('/data', async (req, res) => {
     recommendation: typeof mlPrediction?.recommendation === 'string' ? mlPrediction.recommendation : 'ML unavailable',
     deviceId,
     timestamp: new Date(),
-  };
+  });
 
   console.log('[DATA][ML_RESULT]', { mlSource, prediction: mlPrediction });
   console.log('[ML RESPONSE]', mlPrediction);
@@ -396,7 +397,7 @@ router.get('/latest', async (req, res) => {
       return res.json({ message: 'No data yet', status: 'Waiting...' });
     }
 
-    res.json(latest);
+    res.json(normalizeVitalsRecord(latest));
   } catch (error) {
     console.error('[DATA LATEST ERROR]', error);
 
@@ -404,7 +405,7 @@ router.get('/latest', async (req, res) => {
       return res.json({ message: 'No data yet', status: 'Waiting...' });
     }
 
-    res.json(history[history.length - 1]);
+    res.json(normalizeVitalsRecord(history[history.length - 1]));
   }
 });
 
@@ -413,10 +414,10 @@ router.get('/history', async (req, res) => {
   try {
     const records = await SmartGlove.find().sort({ timestamp: -1 }).limit(50).lean();
     console.log('[DATA][HISTORY] records:', records.length);
-    res.json(records);
+    res.json(records.map(normalizeVitalsRecord));
   } catch (error) {
     console.error('[DATA HISTORY ERROR]', error);
-    res.json(history.slice(-50));
+    res.json(history.slice(-50).map(normalizeVitalsRecord));
   }
 });
 
@@ -438,7 +439,7 @@ async function getAllPatientsHandler(req, res) {
     );
 
     console.log('[DATA][ALL_PATIENTS][RESPONSE] count=', patients.length);
-    return res.json({ patients });
+    return res.json({ patients: patients.map(normalizeVitalsRecord) });
   } catch (error) {
     console.error('[DATA][ALL_PATIENTS_ERROR]', error);
     const fallback = [...history]
@@ -451,7 +452,7 @@ async function getAllPatientsHandler(req, res) {
         return acc;
       }, [])
       .slice(0, 100);
-    return res.json({ patients: fallback });
+    return res.json({ patients: fallback.map(normalizeVitalsRecord) });
   }
 }
 

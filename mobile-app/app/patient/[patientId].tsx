@@ -30,7 +30,7 @@ function normalizeStatus(rawStatus: unknown): Patient['status'] {
   if (normalized === 'critical') return 'Critical';
   if (normalized === 'high') return 'High';
   if (normalized === 'moderate') return 'Moderate';
-  if (normalized === 'low' || normalized === 'normal') return 'Low';
+  if (normalized === 'low' || normalized === 'normal') return 'Normal';
   return 'Unknown';
 }
 

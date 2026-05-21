@@ -44,7 +44,7 @@ export default function DoctorDashboardScreen() {
       const matchFilter =
         filter === 'All' ||
         risk.toLowerCase() === filter.toLowerCase() ||
-        (filter === 'Normal' && (risk === 'Low' || risk === 'Normal'));
+        (filter === 'Normal' && (risk === 'Normal' || risk === 'Low'));
       const matchSearch =
         !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
       return matchFilter && matchSearch;

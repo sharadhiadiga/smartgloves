@@ -1,8 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { normalizeConditionLabel, normalizeRisk } from '@/utils/vitals';
 
-export type PatientStatus = 'Low' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
+export type PatientStatus = 'Normal' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
 
 export type OverallRisk = 'Normal' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
 
@@ -27,7 +28,7 @@ export interface Patient {
 }
 
 const STATUS_STYLES: Record<PatientStatus, { border: string; background: string; pill: string }> = {
-  Low: {
+  Normal: {
     border: '#16A34A',
     background: '#062F1A',
     pill: '#4ADE80',
@@ -63,12 +64,18 @@ function conditionStyle(condition: string): { color: string } {
   if (c === 'critical') return { color: '#F87171' };
   if (c === 'high') return { color: '#FB923C' };
   if (c === 'moderate') return { color: '#FACC15' };
+  if (c === 'normal') return { color: '#4ADE80' };
   return { color: '#94A3B8' };
+}
+
+function displayRiskLabel(patient: Patient): string {
+  return normalizeRisk(patient.overallRiskLevel || patient.status);
 }
 
 const PatientCard = React.memo(function PatientCard({ patient }: { patient: Patient }) {
   const router = useRouter();
-  const statusStyle = STATUS_STYLES[patient.status] ?? STATUS_STYLES.Unknown;
+  const riskLabel = displayRiskLabel(patient);
+  const statusStyle = STATUS_STYLES[riskLabel] ?? STATUS_STYLES.Unknown;
 
   return (
     <Pressable
@@ -85,11 +92,7 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
           <Text style={styles.subtleText}>{patient.id}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: statusStyle.pill }]}>
-          <Text style={styles.statusText}>
-            {patient.overallRiskLevel && patient.overallRiskLevel !== 'Unknown'
-              ? patient.overallRiskLevel
-              : patient.status}
-          </Text>
+          <Text style={styles.statusText}>{riskLabel}</Text>
         </View>
       </View>
 
@@ -97,8 +100,8 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
         <Text style={styles.vitalLabel}>🌡 Temperature</Text>
         <View style={styles.vitalRight}>
           <Text style={styles.vitalValue}>{formatValue(patient.temperature, '°C')}</Text>
-          <Text style={[styles.conditionText, conditionStyle(patient.temperatureCondition)]}>
-            {patient.temperatureCondition}
+          <Text style={[styles.conditionText, conditionStyle(normalizeConditionLabel(patient.temperatureCondition))]}>
+            {normalizeConditionLabel(patient.temperatureCondition)}
           </Text>
         </View>
       </View>
@@ -106,8 +109,8 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
         <Text style={styles.vitalLabel}>❤️ Heart Rate</Text>
         <View style={styles.vitalRight}>
           <Text style={styles.vitalValue}>{formatValue(patient.heartRate, ' bpm')}</Text>
-          <Text style={[styles.conditionText, conditionStyle(patient.heartRateCondition)]}>
-            {patient.heartRateCondition}
+          <Text style={[styles.conditionText, conditionStyle(normalizeConditionLabel(patient.heartRateCondition))]}>
+            {normalizeConditionLabel(patient.heartRateCondition)}
           </Text>
         </View>
       </View>
@@ -115,8 +118,8 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
         <Text style={styles.vitalLabel}>🫁 SpO₂</Text>
         <View style={styles.vitalRight}>
           <Text style={styles.vitalValue}>{formatValue(patient.spo2, ' %')}</Text>
-          <Text style={[styles.conditionText, conditionStyle(patient.spo2Condition)]}>
-            {patient.spo2Condition}
+          <Text style={[styles.conditionText, conditionStyle(normalizeConditionLabel(patient.spo2Condition))]}>
+            {normalizeConditionLabel(patient.spo2Condition)}
           </Text>
         </View>
       </View>
@@ -124,8 +127,8 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
         <Text style={styles.vitalLabel}>⚡ GSR</Text>
         <View style={styles.vitalRight}>
           <Text style={styles.vitalValue}>{formatValue(patient.gsr)}</Text>
-          <Text style={[styles.conditionText, conditionStyle(patient.gsrCondition)]}>
-            {patient.gsrCondition}
+          <Text style={[styles.conditionText, conditionStyle(normalizeConditionLabel(patient.gsrCondition))]}>
+            {normalizeConditionLabel(patient.gsrCondition)}
           </Text>
         </View>
       </View>

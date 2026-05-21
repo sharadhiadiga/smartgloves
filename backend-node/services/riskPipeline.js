@@ -23,7 +23,7 @@ function normalizeConditionLabel(raw) {
   if (c === 'high') return 'High';
   if (c === 'moderate') return 'Moderate';
   if (c === 'invalid') return 'Invalid';
-  if (c === 'low' || c === 'normal') return 'Normal';
+  if (c === 'low' || c === 'normal') return 'Normal'; // legacy "low" → Normal
   return 'Normal';
 }
 
