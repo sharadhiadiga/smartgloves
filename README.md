@@ -16,9 +16,12 @@ A wearable health monitoring platform that collects patient vitals using sensor-
 
 ## 📁 Project Structure
 smartgloves/
-├── firmware/              # ESP32 code
+├── firmware/    # ESP32 code
+
 ├── backend-node/          # API + database
+
 ├── backend-node/ml-model/ # ML service
+
 └── mobile-app/            # React Native app
 
 ## 🛠 Tech Stack
