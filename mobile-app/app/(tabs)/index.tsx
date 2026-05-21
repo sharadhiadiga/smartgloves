@@ -15,7 +15,7 @@ import ConnectionIndicator from '@/components/ConnectionIndicator';
 import PatientCard, { Patient } from '@/components/PatientCard';
 import VitalsSummary from '@/components/VitalsSummary';
 import { useRealtimeDashboard } from '@/hooks/useRealtimeDashboard';
-import { vitalToPatient } from '@/utils/vitals';
+import { formatUiLabel, normalizeRisk, vitalToPatient } from '@/utils/vitals';
 
 type Filter = 'All' | 'Critical' | 'High' | 'Moderate' | 'Normal';
 
@@ -40,11 +40,8 @@ export default function DoctorDashboardScreen() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return patientModels.filter((p) => {
-      const risk = (p.overallRiskLevel || p.status).toString();
-      const matchFilter =
-        filter === 'All' ||
-        risk.toLowerCase() === filter.toLowerCase() ||
-        (filter === 'Normal' && (risk === 'Normal' || risk === 'Low'));
+      const risk = normalizeRisk(p.overallRiskLevel || p.status);
+      const matchFilter = filter === 'All' || risk === filter;
       const matchSearch =
         !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
       return matchFilter && matchSearch;
@@ -79,7 +76,7 @@ export default function DoctorDashboardScreen() {
               heartRate={headline.heartRate}
               spo2={headline.spo2}
               gsr={headline.gsr}
-              overallRisk={headline.overallRiskLevel || headline.status}
+              overallRisk={formatUiLabel(headline.overallRiskLevel || headline.status)}
             />
           </View>
         ) : null}

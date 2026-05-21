@@ -93,7 +93,7 @@ async function ingestVitals(body) {
     console.log('[Vitals] FORCE_CRITICAL_FOR_TESTING=true');
   }
 
-  const record = {
+  const record = normalizeVitalsRecord({
     patientId: parsed.patientId,
     name: parsed.name || parsed.patientId,
     deviceId: parsed.deviceId,
@@ -114,7 +114,7 @@ async function ingestVitals(body) {
     recommendation: risk.recommendation,
     predictionLevel: mlPrediction?.predictionLevel || overallRiskLevel,
     timestamp: parsed.timestamp,
-  };
+  });
 
   let saved;
   try {

@@ -1,26 +1,56 @@
 import type { Patient } from '@/components/PatientCard';
 import type { RiskLevel, VitalReading } from '@/types/vitals';
 
+const LOW_LABEL = /^low$/i;
+
+/** Never show "Low" in the UI — map to Normal. */
 export function normalizeRisk(raw: unknown): RiskLevel {
-  if (typeof raw !== 'string') return 'Unknown';
-  const v = raw.trim().toLowerCase();
+  if (raw == null) return 'Unknown';
+  const v = String(raw).trim().toLowerCase();
+  if (LOW_LABEL.test(v) || v === 'normal') return 'Normal';
   if (v === 'critical') return 'Critical';
   if (v === 'high') return 'High';
   if (v === 'moderate') return 'Moderate';
-  if (v === 'low' || v === 'normal') return 'Normal';
   return 'Unknown';
 }
 
-/** Per-vital and overall labels: never show legacy "Low". */
+/** Final label for any <Text> — use this at render time so "Low" never appears. */
+export function formatUiLabel(raw: unknown): string {
+  if (raw == null) return '—';
+  const trimmed = String(raw).trim();
+  if (!trimmed || trimmed === '—') return '—';
+  if (LOW_LABEL.test(trimmed)) return 'Normal';
+  const risk = normalizeRisk(trimmed);
+  if (risk !== 'Unknown') return risk;
+  const condition = normalizeConditionLabel(trimmed);
+  return LOW_LABEL.test(condition) ? 'Normal' : condition;
+}
+
+/** Per-vital labels: legacy "Low" → Normal. */
 export function normalizeConditionLabel(raw: unknown): string {
   if (raw == null || String(raw).trim() === '' || String(raw).trim() === '—') return '—';
   const v = String(raw).trim().toLowerCase();
-  if (v === 'low' || v === 'normal') return 'Normal';
+  if (LOW_LABEL.test(v) || v === 'normal') return 'Normal';
   if (v === 'critical') return 'Critical';
   if (v === 'high') return 'High';
   if (v === 'moderate') return 'Moderate';
   if (v === 'invalid') return 'Invalid';
   return String(raw).trim();
+}
+
+/** Normalize all risk/condition fields on a vitals record (API + socket). */
+export function normalizeVitalReading(v: VitalReading): VitalReading {
+  const risk = normalizeRisk(v.overallRiskLevel || v.status || v.severity);
+  return {
+    ...v,
+    overallRiskLevel: risk,
+    status: risk,
+    severity: risk,
+    temperatureCondition: normalizeConditionLabel(v.temperatureCondition),
+    heartRateCondition: normalizeConditionLabel(v.heartRateCondition),
+    spo2Condition: normalizeConditionLabel(v.spo2Condition),
+    gsrCondition: normalizeConditionLabel(v.gsrCondition),
+  };
 }
 
 export function formatTimestamp(ts: unknown): string {
@@ -30,25 +60,26 @@ export function formatTimestamp(ts: unknown): string {
 }
 
 export function vitalToPatient(v: VitalReading): Patient {
-  const id = v.patientId || v.id || String(v._id || 'unknown');
-  const risk = normalizeRisk(v.overallRiskLevel || v.status || v.severity);
+  const n = normalizeVitalReading(v);
+  const id = n.patientId || n.id || String(n._id || 'unknown');
+  const risk = normalizeRisk(n.overallRiskLevel || n.status || n.severity);
   return {
     id,
-    name: v.name?.trim() || id,
-    temperature: typeof v.temperature === 'number' ? v.temperature : null,
-    heartRate: typeof v.heartRate === 'number' ? v.heartRate : null,
-    spo2: typeof v.spo2 === 'number' ? v.spo2 : null,
-    gsr: typeof v.gsr === 'number' ? v.gsr : null,
-    temperatureCondition: normalizeConditionLabel(v.temperatureCondition),
-    heartRateCondition: normalizeConditionLabel(v.heartRateCondition),
-    spo2Condition: normalizeConditionLabel(v.spo2Condition),
-    gsrCondition: normalizeConditionLabel(v.gsrCondition),
-    stress: typeof v.stress === 'number' ? v.stress : null,
+    name: n.name?.trim() || id,
+    temperature: typeof n.temperature === 'number' ? n.temperature : null,
+    heartRate: typeof n.heartRate === 'number' ? n.heartRate : null,
+    spo2: typeof n.spo2 === 'number' ? n.spo2 : null,
+    gsr: typeof n.gsr === 'number' ? n.gsr : null,
+    temperatureCondition: n.temperatureCondition,
+    heartRateCondition: n.heartRateCondition,
+    spo2Condition: n.spo2Condition,
+    gsrCondition: n.gsrCondition,
+    stress: typeof n.stress === 'number' ? n.stress : null,
     status: risk,
-    issues: Array.isArray(v.issues) ? v.issues : [],
-    measures: Array.isArray(v.measures) ? v.measures : [],
-    recommendation: v.recommendation || '--',
-    timestamp: formatTimestamp(v.timestamp),
+    issues: Array.isArray(n.issues) ? n.issues : [],
+    measures: Array.isArray(n.measures) ? n.measures : [],
+    recommendation: n.recommendation || '--',
+    timestamp: formatTimestamp(n.timestamp),
     overallRiskLevel: risk,
   };
 }
