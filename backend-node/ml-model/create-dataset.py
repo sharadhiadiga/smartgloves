@@ -23,10 +23,10 @@ def rand_range(a, b):
 
 for _ in range(ROWS_PER_CLASS):
 
-    temp = rand_range(36.0, 37.5)
+    temp = rand_range(0, 37.5)
     hr = random.randint(60, 100)
-    spo2 = random.randint(95, 100)
-    gsr = random.randint(800, 1300)
+    spo2 = random.randint(0, 90)
+    gsr = random.randint(0,2000)
 
     data.append([
         temp,
@@ -42,10 +42,10 @@ for _ in range(ROWS_PER_CLASS):
 
 for _ in range(ROWS_PER_CLASS):
 
-    temp = rand_range(37.6, 38.0)
+    temp = rand_range(37.5, 38.0)
     hr = random.randint(101, 120)
-    spo2 = random.randint(92, 94)
-    gsr = random.randint(1400, 1900)
+    spo2 = random.randint(90, 94)
+    gsr = random.randint(2000,2500)
 
     data.append([
         temp,
@@ -61,10 +61,10 @@ for _ in range(ROWS_PER_CLASS):
 
 for _ in range(ROWS_PER_CLASS):
 
-    temp = rand_range(38.1, 39.0)
+    temp = rand_range(38.0, 39.0)
     hr = random.randint(121, 140)
-    spo2 = random.randint(89, 91)
-    gsr = random.randint(2000, 2600)
+    spo2 = random.randint(93, 95)
+    gsr = random.randint(2500, 3000)
 
     data.append([
         temp,
@@ -80,10 +80,10 @@ for _ in range(ROWS_PER_CLASS):
 
 for _ in range(ROWS_PER_CLASS):
 
-    temp = rand_range(39.1, 40.5)
+    temp = rand_range(39.0, 40.5)
     hr = random.randint(141, 170)
-    spo2 = random.randint(75, 88)
-    gsr = random.randint(2700, 3200)
+    spo2 = random.randint(0 , 90)
+    gsr = random.randint(3000, 3200)
 
     data.append([
         temp,
