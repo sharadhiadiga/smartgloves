@@ -1,110 +1,74 @@
-# SmartGloves
+# Smart Gloves Health Monitoring System
 
-SmartGloves is a smart wearable health monitoring system: **ESP32 → WiFi → Node.js API → Expo mobile app**. Sensor data is POSTed over HTTP from the glove; the app polls the backend every 2 seconds. BLE is no longer used.
+A wearable health monitoring platform that collects patient vitals using sensor-enabled gloves, processes them on a backend with ML-based risk scoring, and displays live health status on a mobile dashboard.
 
-## Architecture (WiFi)
+---
 
-```
-ESP32 (sensors) --WiFi POST--> Backend :5000/api/data
-Mobile app      --WiFi GET---> Backend :5000/api/patients
-```
+## 🚀 Features
 
-- Firmware: `firmware/esp32_wifi_health_glove/`
-- Configure ESP32 `BACKEND_HOST` and mobile `EXPO_PUBLIC_API_BASE_URL` to your machine’s **LAN IP** (same WiFi).
+- Real-time vitals: Temperature, Heart Rate, SpO₂, GSR  
+- Risk classification: Normal → Moderate → High → Critical  
+- End-to-end pipeline: ESP32 → Backend → Mobile App  
+- Live dashboard with real-time updates  
+- Critical condition alerts  
 
-## Project Structure
+---
 
-- **backend-node/**: Node.js backend server with Express, MongoDB integration, and API endpoints for data handling and ML service communication.
-- **ml-model/**: Python-based machine learning service using Flask, scikit-learn, and pandas for health data analysis and predictions.
-- **mobile-app/**: React Native mobile application built with Expo, featuring TypeScript support and modern UI components.
+## 📁 Project Structure
+smartgloves/
+├── firmware/              # ESP32 code
+├── backend-node/          # API + database
+├── backend-node/ml-model/ # ML service
+└── mobile-app/            # React Native app
 
-## Installation and Setup
+## 🛠 Tech Stack
 
-### 1. Clone the Repository
+| Layer     | Technologies |
+|----------|-------------|
+| Hardware | ESP32, TMP117, MAX30102, GSR |
+| Firmware | Arduino (WiFi) |
+| Backend  | Node.js (Express), Python (ML) |
+| Mobile   | React Native, Expo |
+| Database | MongoDB |
 
-```bash
-git clone <repository-url>
-cd smartgloves
-```
+---
 
-### 2. Backend Setup (Node.js)
+## ⚙️ How It Works
 
-Navigate to the backend directory:
+1. Sensors capture temperature, heart rate, SpO₂, and GSR  
+2. ESP32 sends data to backend via WiFi  
+3. Backend processes data and applies ML prediction  
+4. Data stored in MongoDB  
+5. Mobile app displays patient status in real time  
 
-```bash
-cd backend-node
-```
+---
 
-Install dependencies:
+## 🧪 Setup
 
-```bash
-npm install
-```
+- Backend: `npm install && npm start`  
+- Mobile: `npm install && npx expo start`  
+- ESP32: Upload firmware and configure WiFi  
 
-Create a `.env` file in the `backend-node` directory with the following variables:
+---
 
-```env
-PORT=3000
-MONGODB_URI=mongodb://localhost:27017/smartgloves
-ML_SERVICE_URL=http://localhost:5000
-```
+## 📡 API
 
-Start the backend server:
+### POST `/api/data`
 
-```bash
-npm run dev  # For development with nodemon
-# or
-npm start    # For production
-```
-
-The backend will run on `http://localhost:3000`.
-
-### 3. Machine Learning Model Setup (Python)
-
-Navigate to the ML model directory:
-
-```bash
-cd ../ml-model
-```
-
-Install Python dependencies:
-
-```bash
-pip install -r requirements.txt
+```json
+{
+  "id": "P0009",
+  "deviceId": "ESP32_TEST",
+  "temperature": 36.7,
+  "heartRate": 82,
+  "spo2": 99,
+  "gsr": 1200
+}
 ```
 
-Run the ML service:
-
-```bash
-python app.py
-```
-
-The ML service will run on `http://localhost:5000`.
-
-### 4. Mobile App Setup (React Native/Expo)
-
-Navigate to the mobile app directory:
-
-```bash
-cd ../mobile-app
-```
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Start the Expo development server:
-
-```bash
-npm start
-```
-
-This will open the Expo Developer Tools. You can then run the app on:
-
-- **iOS Simulator**: Press `i` in the terminal
-- **Android Emulator**: Press `a` in the terminal
-- **Expo Go App**: Scan the QR code with the Expo Go app on your phone
-- **Web**: Press `w` in the terminal
+## 📊 Status Levels
+Normal — Safe range
+Moderate — Slight deviation
+High — Concerning
+Critical — Immediate attention required
 
