@@ -26,6 +26,7 @@ function severityFromConditionLabel(condition) {
   if (c === 'high') return 'High';
   if (c === 'moderate') return 'Moderate';
   if (c === 'low' || c === 'normal') return 'Low';
+  if (c === 'invalid') return 'Unknown';
   return null;
 }
 
@@ -54,61 +55,127 @@ function toFiniteNumber(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function getSeverityFromStress(stress) {
-  if (stress >= 80) return 'Critical';
-  if (stress >= 60) return 'High';
-  if (stress >= 35) return 'Moderate';
-  return 'Low';
+/** Match ESP32 firmware thresholds (tmpOk approximated: temp <= 0 → Invalid). */
+function tempCondition(temp) {
+  if (temp == null || !Number.isFinite(Number(temp)) || Number(temp) <= 0) return 'Invalid';
+  if (Number(temp) >= 39.0) return 'Critical';
+  if (Number(temp) >= 38.0) return 'High';
+  if (Number(temp) >= 37.5) return 'Moderate';
+  return 'Normal';
 }
 
-function buildDynamicAnalysis({ temperature, heartRate, spo2, gsr }) {
+function hrCondition(hr) {
+  const n = Number(hr);
+  if (!Number.isFinite(n) || n === 0) return 'Invalid';
+  if (n >= 140) return 'Critical';
+  if (n >= 120) return 'High';
+  if (n >= 100) return 'Moderate';
+  if (n >= 60) return 'Normal';
+  return 'Moderate';
+}
+
+function spo2Condition(spo2) {
+  const n = Number(spo2);
+  if (!Number.isFinite(n) || n === 0) return 'Invalid';
+  if (n < 90) return 'Critical';
+  if (n <= 93) return 'High';
+  if (n <= 95) return 'Moderate';
+  return 'Normal';
+}
+
+function gsrCondition(gsr) {
+  const n = Number(gsr);
+  if (!Number.isFinite(n) || n <= 10) return 'Invalid';
+  if (n >= 3000) return 'Critical';
+  if (n >= 2500) return 'High';
+  if (n >= 2000) return 'Moderate';
+  return 'Normal';
+}
+
+function computeVitalConditions({ temperature, heartRate, spo2, gsr }) {
+  return {
+    temperatureCondition: tempCondition(temperature),
+    heartRateCondition: hrCondition(heartRate),
+    spo2Condition: spo2Condition(spo2),
+    gsrCondition: gsrCondition(gsr),
+  };
+}
+
+function stressFromSeverity(severity) {
+  switch (severity) {
+    case 'Critical':
+      return 90;
+    case 'High':
+      return 70;
+    case 'Moderate':
+      return 50;
+    case 'Unknown':
+      return 0;
+    default:
+      return 20;
+  }
+}
+
+function issuesAndMeasuresFromConditions(conditions, vitals) {
   const issues = [];
   const measures = [];
-  let stress = 0;
+  const { temperature, heartRate, spo2, gsr } = vitals;
+  const { temperatureCondition, heartRateCondition, spo2Condition, gsrCondition } = conditions;
 
-  if (temperature >= 39.5 || temperature <= 35) {
-    stress += 30;
+  if (temperatureCondition === 'Critical') {
     issues.push(`Temperature is critical at ${temperature}°C.`);
     measures.push('Seek urgent medical evaluation and monitor temperature every 5 minutes.');
-  } else if (temperature >= 38 || temperature < 36) {
-    stress += 18;
-    issues.push(`Temperature is out of normal range at ${temperature}°C.`);
+  } else if (temperatureCondition === 'High' || temperatureCondition === 'Moderate') {
+    issues.push(`Temperature is out of normal range at ${temperature}°C (${temperatureCondition}).`);
     measures.push('Hydrate, rest, and recheck temperature soon.');
   }
 
-  if (heartRate >= 140 || heartRate <= 45) {
-    stress += 30;
+  if (heartRateCondition === 'Critical') {
     issues.push(`Heart rate is critical at ${heartRate} bpm.`);
     measures.push('Stop activity immediately and seek emergency guidance if symptoms persist.');
-  } else if (heartRate >= 115 || heartRate < 55) {
-    stress += 18;
-    issues.push(`Heart rate is abnormal at ${heartRate} bpm.`);
+  } else if (heartRateCondition === 'High' || heartRateCondition === 'Moderate') {
+    issues.push(`Heart rate is abnormal at ${heartRate} bpm (${heartRateCondition}).`);
     measures.push('Sit down, breathe slowly, and continue close pulse monitoring.');
   }
 
-  if (spo2 < 88) {
-    stress += 35;
+  if (spo2Condition === 'Critical') {
     issues.push(`SpO2 is critically low at ${spo2}%.`);
     measures.push('Check sensor placement and seek immediate respiratory support.');
-  } else if (spo2 < 94) {
-    stress += 20;
-    issues.push(`SpO2 is below ideal at ${spo2}%.`);
+  } else if (spo2Condition === 'High' || spo2Condition === 'Moderate') {
+    issues.push(`SpO2 is below ideal at ${spo2}% (${spo2Condition}).`);
     measures.push('Perform deep breathing and retest oxygen saturation.');
   }
 
-  if (gsr >= 2400) {
-    stress += 20;
-    issues.push(`GSR suggests very high stress at ${gsr}.`);
+  if (gsrCondition === 'Critical' || gsrCondition === 'High') {
+    issues.push(`GSR suggests elevated stress at ${gsr} (${gsrCondition}).`);
     measures.push('Start guided calming exercises and reduce physical load.');
-  } else if (gsr >= 1700) {
-    stress += 10;
-    issues.push(`GSR suggests elevated stress at ${gsr}.`);
+  } else if (gsrCondition === 'Moderate') {
+    issues.push(`GSR suggests moderate stress at ${gsr}.`);
     measures.push('Take a short recovery break and hydrate.');
   }
 
-  const boundedStress = Math.max(0, Math.min(100, stress));
-  const severity = getSeverityFromStress(boundedStress);
-  const status = severity;
+  return {
+    issues: issues.length > 0 ? issues : ['Vitals currently within expected range.'],
+    measures: measures.length > 0 ? measures : ['Continue periodic monitoring.'],
+  };
+}
+
+function severityFromVitals(vitals) {
+  const conditions = computeVitalConditions(vitals);
+  const severity = worstSeverity(
+    severityFromConditionLabel(conditions.temperatureCondition),
+    severityFromConditionLabel(conditions.heartRateCondition),
+    severityFromConditionLabel(conditions.spo2Condition),
+    severityFromConditionLabel(conditions.gsrCondition),
+    'Low'
+  );
+  return { conditions, severity };
+}
+
+function buildDynamicAnalysis(sensorData) {
+  const { conditions, severity } = severityFromVitals(sensorData);
+  const { issues, measures } = issuesAndMeasuresFromConditions(conditions, sensorData);
+  const stress = stressFromSeverity(severity);
 
   const recommendation = severity === 'Critical'
     ? 'Immediate clinical attention recommended.'
@@ -120,10 +187,11 @@ function buildDynamicAnalysis({ temperature, heartRate, spo2, gsr }) {
 
   return {
     level: severity,
-    status,
-    stress: boundedStress,
-    issues: issues.length > 0 ? issues : ['Vitals currently within expected range.'],
-    measures: measures.length > 0 ? measures : ['Continue periodic monitoring.'],
+    status: severity,
+    stress,
+    ...conditions,
+    issues,
+    measures,
     recommendation,
   };
 }
@@ -209,40 +277,33 @@ router.post('/data', async (req, res) => {
     console.error('[DATA][ML_ERROR]', mlError?.message || mlError);
   }
 
-  const level = String(mlPrediction?.level || mlPrediction?.status || 'Low');
-  const mlSeverity = ['Critical', 'High', 'Moderate', 'Low'].includes(level)
-    ? level
-    : getSeverityFromStress(mlPrediction.stress || 0);
+  const { conditions: computedConditions, severity: conditionSeverity } = severityFromVitals(sensorData);
 
-  const esp32Conditions = [
-    temperatureCondition,
-    heartRateCondition,
-    spo2Condition,
-    gsrCondition,
-  ];
-  const esp32Severities = esp32Conditions
-    .map(severityFromConditionLabel)
-    .filter(Boolean);
-  const esp32Severity = worstSeverity(...esp32Severities, 'Low');
-  const severity = worstSeverity(mlSeverity, esp32Severity);
-  const esp32Critical = isAnyEsp32ConditionCritical(esp32Conditions);
+  const level = String(mlPrediction?.level || mlPrediction?.status || 'Low');
+  const mlStress = Number.isFinite(mlPrediction?.stress) ? mlPrediction.stress : 0;
+  const mlSeverity = ['Critical', 'High', 'Moderate', 'Low', 'Unknown'].includes(level)
+    ? level
+    : mlStress >= 80
+      ? 'Critical'
+      : mlStress >= 60
+        ? 'High'
+        : mlStress >= 35
+          ? 'Moderate'
+          : 'Low';
+
+  const severity = worstSeverity(conditionSeverity, mlSeverity);
+  const vitalConditions = computedConditions;
 
   const mlStatus = normalizeStatusUpper(severity);
   console.log('🧠 ML STATUS:', mlStatus);
-  console.log('[DATA][ESP32_CONDITIONS]', {
-    temperatureCondition,
-    heartRateCondition,
-    spo2Condition,
-    gsrCondition,
-    esp32Severity,
-    esp32Critical,
-  });
+  console.log('[DATA][VITAL_CONDITIONS]', vitalConditions);
+  console.log('[DATA][SEVERITY]', { conditionSeverity, mlSeverity, severity });
 
   let status = mlStatus;
   if (FORCE_CRITICAL_FOR_TESTING) {
     status = 'CRITICAL';
     console.log('⚠️ FORCE_CRITICAL_FOR_TESTING enabled — effective status:', status);
-  } else if (esp32Critical || isCriticalStatus(mlStatus)) {
+  } else if (isCriticalStatus(mlStatus) || isAnyEsp32ConditionCritical(Object.values(vitalConditions))) {
     status = 'CRITICAL';
   }
 
@@ -253,10 +314,10 @@ router.post('/data', async (req, res) => {
     heartRate,
     spo2,
     gsr,
-    temperatureCondition: String(temperatureCondition ?? 'Low').trim() || 'Low',
-    heartRateCondition: String(heartRateCondition ?? 'Low').trim() || 'Low',
-    spo2Condition: String(spo2Condition ?? 'Low').trim() || 'Low',
-    gsrCondition: String(gsrCondition ?? 'Low').trim() || 'Low',
+    temperatureCondition: vitalConditions.temperatureCondition,
+    heartRateCondition: vitalConditions.heartRateCondition,
+    spo2Condition: vitalConditions.spo2Condition,
+    gsrCondition: vitalConditions.gsrCondition,
     status: severity,
     severity,
     predictionLevel: level,
