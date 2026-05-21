@@ -23,12 +23,12 @@ function normalizeMlResponse(raw) {
 
   const levelStr = String(levelRaw).toLowerCase().trim();
 
-  let severity = 'Low';
+  let severity = 'Normal';
 
   if (levelStr.includes('critical')) severity = 'Critical';
   else if (levelStr.includes('high')) severity = 'High';
   else if (levelStr.includes('moderate')) severity = 'Moderate';
-  else severity = 'Low';
+  else severity = 'Normal';
 
   return {
     level: severity,

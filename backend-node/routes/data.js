@@ -25,21 +25,21 @@ function isCriticalStatus(status) {
   return normalizeStatusUpper(status) === 'CRITICAL';
 }
 
-const SEVERITY_RANK = { Critical: 4, High: 3, Moderate: 2, Low: 1, Unknown: 0 };
+const SEVERITY_RANK = { Critical: 4, High: 3, Moderate: 2, Normal: 1, Unknown: 0 };
 
 function severityFromConditionLabel(condition) {
   const c = String(condition || '').trim().toLowerCase();
   if (c === 'critical') return 'Critical';
   if (c === 'high') return 'High';
   if (c === 'moderate') return 'Moderate';
-  if (c === 'low' || c === 'normal') return 'Low';
+  if (c === 'low' || c === 'normal') return 'Normal';
   if (c === 'invalid') return 'Unknown';
   return null;
 }
 
 function worstSeverity(...labels) {
-  let best = 'Low';
-  let bestRank = SEVERITY_RANK.Low;
+  let best = 'Normal';
+  let bestRank = SEVERITY_RANK.Normal;
   for (const label of labels) {
     if (!label) continue;
     const rank = SEVERITY_RANK[label] ?? 0;
@@ -128,7 +128,7 @@ function severityFromVitals(vitals) {
     severityFromConditionLabel(conditions.heartRateCondition),
     severityFromConditionLabel(conditions.spo2Condition),
     severityFromConditionLabel(conditions.gsrCondition),
-    'Low'
+    'Normal'
   );
   return { conditions, severity };
 }
@@ -240,9 +240,9 @@ router.post('/data', async (req, res) => {
 
   const { conditions: computedConditions, severity: conditionSeverity } = severityFromVitals(sensorData);
 
-  const level = String(mlPrediction?.level || mlPrediction?.status || 'Low');
+  const level = String(mlPrediction?.level || mlPrediction?.status || 'Normal');
   const mlStress = Number.isFinite(mlPrediction?.stress) ? mlPrediction.stress : 0;
-  const mlSeverity = ['Critical', 'High', 'Moderate', 'Low', 'Unknown'].includes(level)
+  const mlSeverity = ['Critical', 'High', 'Moderate', 'Normal', 'Unknown'].includes(level)
     ? level
     : mlStress >= 80
       ? 'Critical'
@@ -250,7 +250,7 @@ router.post('/data', async (req, res) => {
         ? 'High'
         : mlStress >= 35
           ? 'Moderate'
-          : 'Low';
+          : 'Normal';
 
   const severity = worstSeverity(conditionSeverity, mlSeverity);
   const vitalConditions = computedConditions;

@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-export type PatientStatus = 'Low' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
+export type PatientStatus = 'Normal' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
 
 export type OverallRisk = 'Normal' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
 
@@ -27,7 +27,7 @@ export interface Patient {
 }
 
 const STATUS_STYLES: Record<PatientStatus, { border: string; background: string; pill: string }> = {
-  Low: {
+  Normal: {
     border: '#16A34A',
     background: '#062F1A',
     pill: '#4ADE80',

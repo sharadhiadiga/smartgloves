@@ -20,9 +20,6 @@ export function formatTimestamp(ts: unknown): string {
 export function vitalToPatient(v: VitalReading): Patient {
   const id = v.patientId || v.id || String(v._id || 'unknown');
   const risk = normalizeRisk(v.overallRiskLevel || v.status || v.severity);
-  const statusForCard =
-    risk === 'Normal' ? 'Low' : risk === 'Unknown' ? 'Unknown' : risk;
-
   return {
     id,
     name: v.name?.trim() || id,
@@ -35,7 +32,7 @@ export function vitalToPatient(v: VitalReading): Patient {
     spo2Condition: v.spo2Condition || '—',
     gsrCondition: v.gsrCondition || '—',
     stress: typeof v.stress === 'number' ? v.stress : null,
-    status: statusForCard,
+    status: risk,
     issues: Array.isArray(v.issues) ? v.issues : [],
     measures: Array.isArray(v.measures) ? v.measures : [],
     recommendation: v.recommendation || '--',
