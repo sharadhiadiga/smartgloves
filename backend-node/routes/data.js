@@ -5,6 +5,13 @@ const Doctor = require('../models/Doctor');
 const { predictHealth } = require('../services/mlService');
 const { handlePatientStatusUpdate } = require('../services/patientMonitor');
 const { sendPushNotification } = require('../services/pushService');
+const {
+  tempCondition,
+  hrCondition,
+  spo2Condition,
+  gsrCondition,
+  computeVitalConditions,
+} = require('../services/vitalConditions');
 
 const DOCTOR_USER_ID = process.env.DOCTOR_USER_ID || 'doctor1';
 /** Set FORCE_CRITICAL_FOR_TESTING=false to use real ML severity */
@@ -53,52 +60,6 @@ let history = [];
 function toFiniteNumber(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
-}
-
-/** Match ESP32 firmware thresholds (tmpOk approximated: temp <= 0 → Invalid). */
-function tempCondition(temp) {
-  if (temp == null || !Number.isFinite(Number(temp)) || Number(temp) <= 0) return 'Invalid';
-  if (Number(temp) >= 39.0) return 'Critical';
-  if (Number(temp) >= 38.0) return 'High';
-  if (Number(temp) >= 37.5) return 'Moderate';
-  return 'Normal';
-}
-
-function hrCondition(hr) {
-  const n = Number(hr);
-  if (!Number.isFinite(n) || n === 0) return 'Invalid';
-  if (n >= 140) return 'Critical';
-  if (n >= 120) return 'High';
-  if (n >= 100) return 'Moderate';
-  if (n >= 60) return 'Normal';
-  return 'Moderate';
-}
-
-function spo2Condition(spo2) {
-  const n = Number(spo2);
-  if (!Number.isFinite(n) || n === 0) return 'Invalid';
-  if (n < 90) return 'Critical';
-  if (n <= 93) return 'High';
-  if (n <= 95) return 'Moderate';
-  return 'Normal';
-}
-
-function gsrCondition(gsr) {
-  const n = Number(gsr);
-  if (!Number.isFinite(n) || n <= 10) return 'Invalid';
-  if (n >= 3000) return 'Critical';
-  if (n >= 2500) return 'High';
-  if (n >= 2000) return 'Moderate';
-  return 'Normal';
-}
-
-function computeVitalConditions({ temperature, heartRate, spo2, gsr }) {
-  return {
-    temperatureCondition: tempCondition(temperature),
-    heartRateCondition: hrCondition(heartRate),
-    spo2Condition: spo2Condition(spo2),
-    gsrCondition: gsrCondition(gsr),
-  };
 }
 
 function stressFromSeverity(severity) {

@@ -2,7 +2,15 @@
  * Healthcare risk pipeline — vitals → per-metric risk → overallRiskLevel
  */
 
+const {
+  tempCondition,
+  hrCondition,
+  spo2Condition,
+  gsrCondition,
+} = require('./vitalConditions');
+
 const SEVERITY_RANK = {
+  Invalid: 0,
   Normal: 1,
   Moderate: 2,
   High: 3,
@@ -14,36 +22,28 @@ function normalizeConditionLabel(raw) {
   if (c === 'critical') return 'Critical';
   if (c === 'high') return 'High';
   if (c === 'moderate') return 'Moderate';
+  if (c === 'invalid') return 'Invalid';
   if (c === 'low' || c === 'normal') return 'Normal';
   return 'Normal';
 }
 
 function assessTemperatureRisk(celsius) {
-  if (celsius >= 39.5 || celsius <= 35) return 'Critical';
-  if (celsius >= 38 || celsius < 36) return 'High';
-  if (celsius >= 37.2 || celsius < 36.5) return 'Moderate';
-  return 'Normal';
+  return tempCondition(celsius);
 }
 
 function assessHeartRateRisk(bpm) {
-  if (bpm >= 140 || bpm <= 45) return 'Critical';
-  if (bpm >= 115 || bpm < 55) return 'High';
-  if (bpm >= 100 || bpm < 60) return 'Moderate';
-  return 'Normal';
+  return hrCondition(bpm);
 }
 
 function assessSpo2Risk(spo2) {
-  if (spo2 < 88) return 'Critical';
-  if (spo2 < 94) return 'High';
-  if (spo2 < 97) return 'Moderate';
-  return 'Normal';
+  return spo2Condition(spo2);
 }
 
 function assessGsrStress(gsr) {
-  if (gsr >= 2400) return { stress: 85, risk: 'Critical' };
-  if (gsr >= 1700) return { stress: 65, risk: 'High' };
-  if (gsr >= 1200) return { stress: 45, risk: 'Moderate' };
-  return { stress: 20, risk: 'Normal' };
+  const risk = gsrCondition(gsr);
+  const stress =
+    risk === 'Critical' ? 85 : risk === 'High' ? 65 : risk === 'Moderate' ? 45 : risk === 'Invalid' ? 0 : 20;
+  return { stress, risk };
 }
 
 function worstRisk(...levels) {
@@ -54,7 +54,16 @@ function worstRisk(...levels) {
     const r = SEVERITY_RANK[normalized] ?? SEVERITY_RANK.Normal;
     if (r > rank) {
       rank = r;
-      winner = normalized === 'Critical' ? 'Critical' : normalized === 'High' ? 'High' : normalized === 'Moderate' ? 'Moderate' : 'Normal';
+      winner =
+        normalized === 'Critical'
+          ? 'Critical'
+          : normalized === 'High'
+            ? 'High'
+            : normalized === 'Moderate'
+              ? 'Moderate'
+              : normalized === 'Invalid'
+                ? 'Invalid'
+                : 'Normal';
     }
   }
   return winner;
@@ -70,38 +79,29 @@ function runRiskPipeline(vitals, mlPrediction = null) {
   const spo2 = Number(vitals.spo2);
   const gsr = Number(vitals.gsr);
 
-  const temperatureRisk = assessTemperatureRisk(temperature);
-  const heartRateRisk = assessHeartRateRisk(heartRate);
-  const spo2Risk = assessSpo2Risk(spo2);
+  const temperatureCondition = assessTemperatureRisk(temperature);
+  const heartRateCondition = assessHeartRateRisk(heartRate);
+  const spo2Condition = assessSpo2Risk(spo2);
   const gsrResult = assessGsrStress(gsr);
-
-  const esp32Temps = normalizeConditionLabel(vitals.temperatureCondition);
-  const esp32Hr = normalizeConditionLabel(vitals.heartRateCondition);
-  const esp32Spo2 = normalizeConditionLabel(vitals.spo2Condition);
-  const esp32Gsr = normalizeConditionLabel(vitals.gsrCondition);
-
-  const temperatureCondition = worstRisk(temperatureRisk, esp32Temps);
-  const heartRateCondition = worstRisk(heartRateRisk, esp32Hr);
-  const spo2Condition = worstRisk(spo2Risk, esp32Spo2);
-  const gsrCondition = worstRisk(gsrResult.risk, esp32Gsr);
+  const gsrCondition = gsrResult.risk;
 
   let stress = gsrResult.stress;
   const issues = [];
   const measures = [];
 
-  if (temperatureCondition !== 'Normal') {
+  if (temperatureCondition !== 'Normal' && temperatureCondition !== 'Invalid') {
     issues.push(`Temperature ${temperature}°C (${temperatureCondition})`);
     measures.push('Monitor temperature every 5–15 minutes.');
   }
-  if (heartRateCondition !== 'Normal') {
+  if (heartRateCondition !== 'Normal' && heartRateCondition !== 'Invalid') {
     issues.push(`Heart rate ${heartRate} bpm (${heartRateCondition})`);
     measures.push('Reduce exertion; recheck pulse frequently.');
   }
-  if (spo2Condition !== 'Normal') {
+  if (spo2Condition !== 'Normal' && spo2Condition !== 'Invalid') {
     issues.push(`SpO₂ ${spo2}% (${spo2Condition})`);
     measures.push('Verify sensor placement; consider supplemental O₂ per protocol.');
   }
-  if (gsrCondition !== 'Normal') {
+  if (gsrCondition !== 'Normal' && gsrCondition !== 'Invalid') {
     issues.push(`GSR ${gsr} indicates elevated stress (${gsrCondition})`);
     measures.push('Encourage rest and stress-reduction techniques.');
   }
