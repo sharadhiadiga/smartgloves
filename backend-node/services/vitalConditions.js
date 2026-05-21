@@ -47,10 +47,38 @@ function computeVitalConditions({ temperature, heartRate, spo2, gsr }) {
   };
 }
 
+/** Map legacy "Low" (and "normal") to display label "Normal". */
+function normalizeOutboundLabel(label) {
+  if (label == null) return label;
+  const c = String(label).trim().toLowerCase();
+  if (c === 'low' || c === 'normal') return 'Normal';
+  if (c === 'critical') return 'Critical';
+  if (c === 'high') return 'High';
+  if (c === 'moderate') return 'Moderate';
+  if (c === 'invalid') return 'Invalid';
+  return String(label).trim();
+}
+
+function normalizeVitalsRecord(record) {
+  if (!record || typeof record !== 'object') return record;
+  return {
+    ...record,
+    status: normalizeOutboundLabel(record.status),
+    severity: normalizeOutboundLabel(record.severity),
+    overallRiskLevel: normalizeOutboundLabel(record.overallRiskLevel),
+    temperatureCondition: normalizeOutboundLabel(record.temperatureCondition),
+    heartRateCondition: normalizeOutboundLabel(record.heartRateCondition),
+    spo2Condition: normalizeOutboundLabel(record.spo2Condition),
+    gsrCondition: normalizeOutboundLabel(record.gsrCondition),
+  };
+}
+
 module.exports = {
   tempCondition,
   hrCondition,
   spo2Condition,
   gsrCondition,
   computeVitalConditions,
+  normalizeOutboundLabel,
+  normalizeVitalsRecord,
 };

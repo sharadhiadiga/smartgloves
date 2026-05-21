@@ -1,6 +1,7 @@
 const SmartGlove = require('../models/SmartGlove');
 const { predictHealth } = require('./mlService');
 const { runRiskPipeline } = require('./riskPipeline');
+const { normalizeVitalsRecord } = require('./vitalConditions');
 const { broadcastVitalsUpdate, broadcastAlert } = require('./socketHub');
 const { handlePatientStatusUpdate } = require('./patientMonitor');
 const { sendPushNotification } = require('./pushService');
@@ -124,11 +125,11 @@ async function ingestVitals(body) {
     saved = { ...record, _id: `mem-${Date.now()}` };
   }
 
-  const payload = {
+  const payload = normalizeVitalsRecord({
     ...record,
     id: String(saved._id),
     timestamp: saved.timestamp || record.timestamp,
-  };
+  });
 
   broadcastVitalsUpdate(payload);
 
@@ -179,7 +180,7 @@ async function getLatestByPatientId(patientId) {
   const doc = await SmartGlove.findOne({ patientId: String(patientId) })
     .sort({ timestamp: -1 })
     .lean();
-  return doc;
+  return doc ? normalizeVitalsRecord(doc) : doc;
 }
 
 async function getDashboardData() {
@@ -193,9 +194,9 @@ async function getDashboardData() {
     }
   }
 
-  const patients = Array.from(latestByPatient.values()).sort(
-    (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
-  );
+  const patients = Array.from(latestByPatient.values())
+    .map(normalizeVitalsRecord)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   const alerts = patients.filter(
     (p) => p.overallRiskLevel === 'Critical' || p.overallRiskLevel === 'High' || p.severity === 'Critical' || p.severity === 'High'

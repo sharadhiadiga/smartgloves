@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { normalizeRisk } from '@/utils/vitals';
 
 interface Props {
   temperature: number | null;
@@ -29,7 +30,7 @@ export default function VitalsSummary({ temperature, heartRate, spo2, gsr, overa
         <Text style={styles.value}>{gsr ?? '--'}</Text>
       </View>
       <View style={[styles.riskBar, riskColor(overallRisk)]}>
-        <Text style={styles.riskText}>Risk: {overallRisk}</Text>
+        <Text style={styles.riskText}>Risk: {normalizeRisk(overallRisk)}</Text>
       </View>
     </View>
   );

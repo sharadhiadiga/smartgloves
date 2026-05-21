@@ -11,6 +11,7 @@ const {
   spo2Condition,
   gsrCondition,
   computeVitalConditions,
+  normalizeVitalsRecord,
 } = require('../services/vitalConditions');
 
 const DOCTOR_USER_ID = process.env.DOCTOR_USER_ID || 'doctor1';
@@ -268,7 +269,7 @@ router.post('/data', async (req, res) => {
     status = 'CRITICAL';
   }
 
-  const result = {
+  const result = normalizeVitalsRecord({
     patientId: resolvedPatientId,
     name: typeof name === 'string' && name.trim().length > 0 ? name.trim() : undefined,
     temperature,
@@ -288,7 +289,7 @@ router.post('/data', async (req, res) => {
     recommendation: typeof mlPrediction?.recommendation === 'string' ? mlPrediction.recommendation : 'ML unavailable',
     deviceId,
     timestamp: new Date(),
-  };
+  });
 
   console.log('[DATA][ML_RESULT]', { mlSource, prediction: mlPrediction });
   console.log('[ML RESPONSE]', mlPrediction);
@@ -396,7 +397,7 @@ router.get('/latest', async (req, res) => {
       return res.json({ message: 'No data yet', status: 'Waiting...' });
     }
 
-    res.json(latest);
+    res.json(normalizeVitalsRecord(latest));
   } catch (error) {
     console.error('[DATA LATEST ERROR]', error);
 
@@ -404,7 +405,7 @@ router.get('/latest', async (req, res) => {
       return res.json({ message: 'No data yet', status: 'Waiting...' });
     }
 
-    res.json(history[history.length - 1]);
+    res.json(normalizeVitalsRecord(history[history.length - 1]));
   }
 });
 
@@ -413,10 +414,10 @@ router.get('/history', async (req, res) => {
   try {
     const records = await SmartGlove.find().sort({ timestamp: -1 }).limit(50).lean();
     console.log('[DATA][HISTORY] records:', records.length);
-    res.json(records);
+    res.json(records.map(normalizeVitalsRecord));
   } catch (error) {
     console.error('[DATA HISTORY ERROR]', error);
-    res.json(history.slice(-50));
+    res.json(history.slice(-50).map(normalizeVitalsRecord));
   }
 });
 
@@ -438,7 +439,7 @@ async function getAllPatientsHandler(req, res) {
     );
 
     console.log('[DATA][ALL_PATIENTS][RESPONSE] count=', patients.length);
-    return res.json({ patients });
+    return res.json({ patients: patients.map(normalizeVitalsRecord) });
   } catch (error) {
     console.error('[DATA][ALL_PATIENTS_ERROR]', error);
     const fallback = [...history]
@@ -451,7 +452,7 @@ async function getAllPatientsHandler(req, res) {
         return acc;
       }, [])
       .slice(0, 100);
-    return res.json({ patients: fallback });
+    return res.json({ patients: fallback.map(normalizeVitalsRecord) });
   }
 }
 
