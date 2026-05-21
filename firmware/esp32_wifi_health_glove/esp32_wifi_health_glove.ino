@@ -109,30 +109,35 @@ void ledBackendError() {
 
 // ===================== CONDITION LABELS =====================
 String conditionTemperature(float t) {
-  if (t >= 39.5f || t <= 35.0f) return "Critical";
-  if (t >= 38.0f || t < 36.0f) return "High";
-  if (t >= 37.2f || t < 36.5f) return "Moderate";
+  if (t <= 0.0f) return "Invalid";
+  if (t >= 39.0f) return "Critical";
+  if (t >= 38.0f) return "High";
+  if (t >= 37.5f) return "Moderate";
   return "Normal";
 }
 
 String conditionHeartRate(int hr) {
-  if (hr >= 140 || hr <= 45) return "Critical";
-  if (hr >= 115 || hr < 55) return "High";
-  if (hr >= 100 || hr < 60) return "Moderate";
-  return "Normal";
+  if (hr == 0) return "Invalid";
+  if (hr >= 140) return "Critical";
+  if (hr >= 120) return "High";
+  if (hr >= 100) return "Moderate";
+  if (hr >= 60) return "Normal";
+  return "Moderate";
 }
 
 String conditionSpo2(int spo2) {
-  if (spo2 < 88) return "Critical";
-  if (spo2 < 94) return "High";
-  if (spo2 < 97) return "Moderate";
+  if (spo2 == 0) return "Invalid";
+  if (spo2 < 90) return "Critical";
+  if (spo2 <= 93) return "High";
+  if (spo2 <= 95) return "Moderate";
   return "Normal";
 }
 
 String conditionGsr(int gsr) {
-  if (gsr >= 2400) return "Critical";
-  if (gsr >= 1700) return "High";
-  if (gsr >= 1200) return "Moderate";
+  if (gsr <= 10) return "Invalid";
+  if (gsr >= 3000) return "Critical";
+  if (gsr >= 2500) return "High";
+  if (gsr >= 2000) return "Moderate";
   return "Normal";
 }
 

@@ -106,26 +106,26 @@ def safety_override(
     if (
         temperature >= 39.0 or
         heartRate >= 140 or
-        spo2 < 89 or
-        gsr >= 2700
+        spo2 < 90 or
+        gsr >= 3000
     ):
         return "Critical"
 
     # HIGH
     elif (
-        temperature >= 38.1 or
-        heartRate >= 121 or
-        spo2 <= 91 or
-        gsr >= 2000
+        temperature >= 38.0 or
+        heartRate >= 120 or
+        spo2 <= 93 or
+        gsr >= 2500
     ):
         return "High"
 
     # MODERATE
     elif (
-        temperature >= 37.6 or
-        heartRate >= 101 or
-        spo2 <= 94 or
-        gsr >= 1400
+        temperature >= 37.5 or
+        heartRate >= 100 or (0 < heartRate < 60) or
+        spo2 <= 95 or
+        gsr >= 2000
     ):
         return "Moderate"
 
