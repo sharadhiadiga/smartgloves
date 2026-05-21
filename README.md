@@ -71,8 +71,12 @@ smartgloves/
 ```
 
 ## 📊 Status Levels
+
 Normal — Safe range
+
 Moderate — Slight deviation
+
 High — Concerning
+
 Critical — Immediate attention required
 
