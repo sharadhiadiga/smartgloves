@@ -237,13 +237,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   left: {
-    flex: 1,
-    minWidth: 120,
+    flexGrow: 0,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   right: {
+    flexShrink: 0,
     alignItems: 'flex-end',
     marginLeft: 10,
   },
