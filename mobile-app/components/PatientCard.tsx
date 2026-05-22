@@ -96,54 +96,38 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
         </View>
       </View>
 
-      <View style={styles.row}>
+      <View style={styles.vitalBlock}>
         <Text style={styles.vitalLabel}>🌡 {VITAL_LABELS.temperature}</Text>
-        <View style={styles.vitalRight}>
-          <Text style={styles.vitalValue}>
-            {VITAL_LABELS.temperature}: {formatValue(patient.temperature, '°C')}
-          </Text>
-          <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.temperatureCondition))]}>
-            {formatUiLabel(patient.temperatureCondition)}
-          </Text>
-        </View>
+        <Text style={styles.vitalValue}>{formatValue(patient.temperature, '°C')}</Text>
+        <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.temperatureCondition))]}>
+          {formatUiLabel(patient.temperatureCondition)}
+        </Text>
       </View>
-      <View style={styles.row}>
+      <View style={styles.vitalBlock}>
         <Text style={styles.vitalLabel}>❤️ {VITAL_LABELS.heartRate}</Text>
-        <View style={styles.vitalRight}>
-          <Text style={styles.vitalValue}>
-            {VITAL_LABELS.heartRate}: {formatValue(patient.heartRate, ' bpm')}
-          </Text>
-          <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.heartRateCondition))]}>
-            {formatUiLabel(patient.heartRateCondition)}
-          </Text>
-        </View>
+        <Text style={styles.vitalValue}>{formatValue(patient.heartRate, ' bpm')}</Text>
+        <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.heartRateCondition))]}>
+          {formatUiLabel(patient.heartRateCondition)}
+        </Text>
       </View>
-      <View style={styles.row}>
+      <View style={styles.vitalBlock}>
         <Text style={styles.vitalLabel}>🫁 {VITAL_LABELS.spo2}</Text>
-        <View style={styles.vitalRight}>
-          <Text style={styles.vitalValue}>
-            {VITAL_LABELS.spo2}: {formatValue(patient.spo2, '%')}
-          </Text>
-          <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.spo2Condition))]}>
-            {formatUiLabel(patient.spo2Condition)}
-          </Text>
-        </View>
+        <Text style={styles.vitalValue}>{formatValue(patient.spo2, '%')}</Text>
+        <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.spo2Condition))]}>
+          {formatUiLabel(patient.spo2Condition)}
+        </Text>
       </View>
-      <View style={styles.row}>
+      <View style={styles.vitalBlock}>
         <Text style={styles.vitalLabel}>⚡ {VITAL_LABELS.gsr}</Text>
-        <View style={styles.vitalRight}>
-          <Text style={styles.vitalValue}>
-            {VITAL_LABELS.gsr}: {formatValue(patient.gsr)}
-          </Text>
-          <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.gsrCondition))]}>
-            {formatUiLabel(patient.gsrCondition)}
-          </Text>
-        </View>
+        <Text style={styles.vitalValue}>{formatValue(patient.gsr)}</Text>
+        <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.gsrCondition))]}>
+          {formatUiLabel(patient.gsrCondition)}
+        </Text>
       </View>
 
       <View style={styles.divider} />
 
-      <View style={styles.row}>
+      <View style={styles.vitalBlock}>
         <Text style={styles.vitalLabel}>Stress Level</Text>
         <Text style={styles.vitalValue}>{patient.stress !== null ? `${patient.stress}%` : '--'}</Text>
       </View>
@@ -220,23 +204,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#020617',
   },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+  vitalBlock: {
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   vitalLabel: {
     color: '#E2E8F0',
     fontSize: 14,
   },
-  vitalRight: {
-    alignItems: 'flex-end',
-  },
   vitalValue: {
     color: '#F8FAFC',
     fontSize: 15,
     fontWeight: '700',
+    marginTop: 4,
   },
   conditionText: {
     fontSize: 11,
