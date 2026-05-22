@@ -13,24 +13,20 @@ interface Props {
 
 export default function VitalsSummary({ temperature, heartRate, spo2, gsr, overallRisk }: Props) {
   return (
-    <View style={styles.grid}>
-      <View style={styles.cell}>
+    <View style={styles.container}>
+      <View style={styles.vitalBlock}>
         <Text style={styles.label}>{VITAL_LABELS.temperature}</Text>
-        <Text style={styles.value}>
-          {temperature != null ? `${temperature}°C` : '--'}
-        </Text>
+        <Text style={styles.value}>{temperature != null ? `${temperature}°C` : '--'}</Text>
       </View>
-      <View style={styles.cell}>
+      <View style={styles.vitalBlock}>
         <Text style={styles.label}>{VITAL_LABELS.heartRate}</Text>
-        <Text style={styles.value}>
-          {heartRate != null ? `${heartRate} bpm` : '--'}
-        </Text>
+        <Text style={styles.value}>{heartRate != null ? `${heartRate} bpm` : '--'}</Text>
       </View>
-      <View style={styles.cell}>
+      <View style={styles.vitalBlock}>
         <Text style={styles.label}>{VITAL_LABELS.spo2}</Text>
         <Text style={styles.value}>{spo2 != null ? `${spo2}%` : '--'}</Text>
       </View>
-      <View style={styles.cell}>
+      <View style={styles.vitalBlock}>
         <Text style={styles.label}>{VITAL_LABELS.gsr}</Text>
         <Text style={styles.value}>{gsr != null ? `${gsr}` : '--'}</Text>
       </View>
@@ -50,19 +46,19 @@ function riskColor(risk: string) {
 }
 
 const styles = StyleSheet.create({
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  container: {
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
     marginVertical: 12,
+    width: '100%',
   },
-  cell: {
-    width: '47%',
-    backgroundColor: '#0F172A',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
+  vitalBlock: {
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+    width: '100%',
   },
   label: { color: '#94A3B8', fontSize: 12 },
   value: { color: '#F8FAFC', fontSize: 18, fontWeight: '800', marginTop: 4 },
@@ -71,6 +67,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10,
     marginTop: 4,
+    alignSelf: 'stretch',
   },
-  riskText: { color: '#F8FAFC', fontWeight: '700', textAlign: 'center' },
+  riskText: { color: '#F8FAFC', fontWeight: '700', textAlign: 'left' },
 });
