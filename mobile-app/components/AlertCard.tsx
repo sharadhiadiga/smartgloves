@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { VitalReading } from '@/types/vitals';
+import { VITAL_LABELS } from '@/constants/vitalLabels';
 import { formatUiLabel } from '@/utils/vitals';
 
 export default function AlertCard({ alert }: { alert: VitalReading }) {
@@ -10,7 +11,8 @@ export default function AlertCard({ alert }: { alert: VitalReading }) {
       <Text style={styles.title}>🚨 {alert.name || alert.patientId}</Text>
       <Text style={styles.sub}>{alert.patientId} · {risk}</Text>
       <Text style={styles.vitals}>
-        T {alert.temperature}°C · HR {alert.heartRate} · SpO₂ {alert.spo2}% · GSR {alert.gsr}
+        {VITAL_LABELS.temperature}: {alert.temperature}°C · {VITAL_LABELS.heartRate}: {alert.heartRate}{' '}
+        bpm · {VITAL_LABELS.spo2}: {alert.spo2}% · {VITAL_LABELS.gsr}: {alert.gsr}
       </Text>
     </View>
   );

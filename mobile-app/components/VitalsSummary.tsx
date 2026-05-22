@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { VITAL_LABELS } from '@/constants/vitalLabels';
 import { formatUiLabel } from '@/utils/vitals';
 
 interface Props {
@@ -14,20 +15,24 @@ export default function VitalsSummary({ temperature, heartRate, spo2, gsr, overa
   return (
     <View style={styles.grid}>
       <View style={styles.cell}>
-        <Text style={styles.label}>Temp</Text>
-        <Text style={styles.value}>{temperature ?? '--'}°C</Text>
+        <Text style={styles.label}>{VITAL_LABELS.temperature}</Text>
+        <Text style={styles.value}>
+          {temperature != null ? `${temperature}°C` : '--'}
+        </Text>
       </View>
       <View style={styles.cell}>
-        <Text style={styles.label}>HR</Text>
-        <Text style={styles.value}>{heartRate ?? '--'}</Text>
+        <Text style={styles.label}>{VITAL_LABELS.heartRate}</Text>
+        <Text style={styles.value}>
+          {heartRate != null ? `${heartRate} bpm` : '--'}
+        </Text>
       </View>
       <View style={styles.cell}>
-        <Text style={styles.label}>SpO₂</Text>
-        <Text style={styles.value}>{spo2 ?? '--'}%</Text>
+        <Text style={styles.label}>{VITAL_LABELS.spo2}</Text>
+        <Text style={styles.value}>{spo2 != null ? `${spo2}%` : '--'}</Text>
       </View>
       <View style={styles.cell}>
-        <Text style={styles.label}>GSR</Text>
-        <Text style={styles.value}>{gsr ?? '--'}</Text>
+        <Text style={styles.label}>{VITAL_LABELS.gsr}</Text>
+        <Text style={styles.value}>{gsr != null ? `${gsr}` : '--'}</Text>
       </View>
       <View style={[styles.riskBar, riskColor(overallRisk)]}>
         <Text style={styles.riskText}>Risk: {formatUiLabel(overallRisk)}</Text>

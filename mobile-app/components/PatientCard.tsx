@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { VITAL_LABELS } from '@/constants/vitalLabels';
 import { formatUiLabel } from '@/utils/vitals';
 
 export type PatientStatus = 'Normal' | 'Moderate' | 'High' | 'Critical' | 'Unknown';
@@ -96,36 +97,44 @@ const PatientCard = React.memo(function PatientCard({ patient }: { patient: Pati
       </View>
 
       <View style={styles.row}>
-        <Text style={styles.vitalLabel}>🌡 Temperature</Text>
+        <Text style={styles.vitalLabel}>🌡 {VITAL_LABELS.temperature}</Text>
         <View style={styles.vitalRight}>
-          <Text style={styles.vitalValue}>{formatValue(patient.temperature, '°C')}</Text>
+          <Text style={styles.vitalValue}>
+            {VITAL_LABELS.temperature}: {formatValue(patient.temperature, '°C')}
+          </Text>
           <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.temperatureCondition))]}>
             {formatUiLabel(patient.temperatureCondition)}
           </Text>
         </View>
       </View>
       <View style={styles.row}>
-        <Text style={styles.vitalLabel}>❤️ Heart Rate</Text>
+        <Text style={styles.vitalLabel}>❤️ {VITAL_LABELS.heartRate}</Text>
         <View style={styles.vitalRight}>
-          <Text style={styles.vitalValue}>{formatValue(patient.heartRate, ' bpm')}</Text>
+          <Text style={styles.vitalValue}>
+            {VITAL_LABELS.heartRate}: {formatValue(patient.heartRate, ' bpm')}
+          </Text>
           <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.heartRateCondition))]}>
             {formatUiLabel(patient.heartRateCondition)}
           </Text>
         </View>
       </View>
       <View style={styles.row}>
-        <Text style={styles.vitalLabel}>🫁 SpO₂</Text>
+        <Text style={styles.vitalLabel}>🫁 {VITAL_LABELS.spo2}</Text>
         <View style={styles.vitalRight}>
-          <Text style={styles.vitalValue}>{formatValue(patient.spo2, ' %')}</Text>
+          <Text style={styles.vitalValue}>
+            {VITAL_LABELS.spo2}: {formatValue(patient.spo2, '%')}
+          </Text>
           <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.spo2Condition))]}>
             {formatUiLabel(patient.spo2Condition)}
           </Text>
         </View>
       </View>
       <View style={styles.row}>
-        <Text style={styles.vitalLabel}>⚡ GSR</Text>
+        <Text style={styles.vitalLabel}>⚡ {VITAL_LABELS.gsr}</Text>
         <View style={styles.vitalRight}>
-          <Text style={styles.vitalValue}>{formatValue(patient.gsr)}</Text>
+          <Text style={styles.vitalValue}>
+            {VITAL_LABELS.gsr}: {formatValue(patient.gsr)}
+          </Text>
           <Text style={[styles.conditionText, conditionStyle(formatUiLabel(patient.gsrCondition))]}>
             {formatUiLabel(patient.gsrCondition)}
           </Text>
