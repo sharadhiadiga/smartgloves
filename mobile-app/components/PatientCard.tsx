@@ -237,19 +237,24 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   left: {
+    flex: 1,
+    minWidth: 120,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   right: {
     alignItems: 'flex-end',
+    marginLeft: 10,
   },
   vitalIcon: {
     fontSize: 16,
+    flexShrink: 0,
   },
   vitalLabel: {
     color: '#E2E8F0',
     fontSize: 14,
+    flexShrink: 0,
   },
   vitalValue: {
     color: '#F8FAFC',
