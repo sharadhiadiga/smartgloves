@@ -4,22 +4,22 @@ A wearable IoT-based health monitoring platform that continuously monitors patie
 
 
 
-# 📖 Overview
+#  Overview
 
 The Smart Gloves Health Monitoring System is designed to provide continuous patient monitoring by integrating wearable sensors, IoT communication, machine learning, and mobile technologies. The gloves collect vital health parameters, transmit them to a backend server through an ESP32 microcontroller, and classify the patient's condition into different risk levels. The processed information is then displayed on a real-time mobile dashboard, allowing caregivers and healthcare professionals to monitor patients efficiently.
 
 
 
-# ✨ Features
+#  Features
 
-### 🩺 Real-Time Health Monitoring
+###  Real-Time Health Monitoring
 - Continuous monitoring of:
   - Body Temperature
   - Heart Rate
   - Blood Oxygen (SpO₂)
   - Galvanic Skin Response (GSR)
 
-### 🤖 ML-Based Risk Assessment
+###  ML-Based Risk Assessment
 - Intelligent patient health classification
 - Four health status levels:
   - 🟢 Normal
@@ -27,19 +27,19 @@ The Smart Gloves Health Monitoring System is designed to provide continuous pati
   - 🟠 High
   - 🔴 Critical
 
-### 📡 End-to-End IoT Pipeline
+###  End-to-End IoT Pipeline
 - Sensor data collection using ESP32
 - WiFi-based data transmission
 - Backend data processing
 - Real-time mobile application updates
 
-### 📱 Mobile Dashboard
+###  Mobile Dashboard
 - Live health status monitoring
 - Patient-wise vital statistics
 - Instant visualization of sensor readings
 - User-friendly interface
 
-### 🚨 Critical Health Alerts
+###  Critical Health Alerts
 - Detects abnormal vital signs
 - Generates alerts for critical patient conditions
 - Enables timely medical intervention
