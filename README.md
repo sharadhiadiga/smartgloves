@@ -1,108 +1,110 @@
-# Smart Gloves Health Monitoring System
+# 🧤 Smart Gloves Health Monitoring System
 
-A wearable health monitoring platform that collects patient vitals using sensor-enabled gloves, processes them on a backend with ML-based risk scoring, and displays live health status on a mobile dashboard.
+A wearable IoT-based health monitoring platform that continuously monitors patient vital signs using sensor-enabled smart gloves. The system collects physiological data, processes it through an ML-powered backend for risk assessment, and displays real-time health status on a mobile application, enabling proactive healthcare monitoring.
 
----
 
-## 🚀 Features
 
-- Real-time vitals: Temperature, Heart Rate, SpO₂, GSR  
+# 📖 Overview
 
-- Risk classification: Normal → Moderate → High → Critical  
+The Smart Gloves Health Monitoring System is designed to provide continuous patient monitoring by integrating wearable sensors, IoT communication, machine learning, and mobile technologies. The gloves collect vital health parameters, transmit them to a backend server through an ESP32 microcontroller, and classify the patient's condition into different risk levels. The processed information is then displayed on a real-time mobile dashboard, allowing caregivers and healthcare professionals to monitor patients efficiently.
 
-- End-to-end pipeline: ESP32 → Backend → Mobile App  
 
-- Live dashboard with real-time updates  
 
-- Critical condition alerts  
+# ✨ Features
 
----
+### 🩺 Real-Time Health Monitoring
+- Continuous monitoring of:
+  - Body Temperature
+  - Heart Rate
+  - Blood Oxygen (SpO₂)
+  - Galvanic Skin Response (GSR)
 
-## 📁 Project Structure
+### 🤖 ML-Based Risk Assessment
+- Intelligent patient health classification
+- Four health status levels:
+  - 🟢 Normal
+  - 🟡 Moderate
+  - 🟠 High
+  - 🔴 Critical
 
-smartgloves/
+### 📡 End-to-End IoT Pipeline
+- Sensor data collection using ESP32
+- WiFi-based data transmission
+- Backend data processing
+- Real-time mobile application updates
 
-├── firmware/    # ESP32 code
+### 📱 Mobile Dashboard
+- Live health status monitoring
+- Patient-wise vital statistics
+- Instant visualization of sensor readings
+- User-friendly interface
 
-├── backend-node/          # API + database
+### 🚨 Critical Health Alerts
+- Detects abnormal vital signs
+- Generates alerts for critical patient conditions
+- Enables timely medical intervention
 
-├── backend-node/ml-model/ # ML service
 
-└── mobile-app/            # React Native app
 
-## 🛠 Tech Stack
+# 🛠️ Tech Stack
 
-| Layer     | Technologies |
+| Category | Technologies |
+|----------|--------------|
+| **Hardware** | ESP32, TMP117, MAX30102, GSR Sensor |
+| **Firmware** | Arduino IDE (WiFi Communication) |
+| **Backend** | Node.js, Express.js, Python (Machine Learning) |
+| **Mobile** | React Native, Expo |
+| **Database** | MongoDB |
 
-|----------|-------------|
 
-| Hardware | ESP32, TMP117, MAX30102, GSR |
 
-| Firmware | Arduino (WiFi) |
+# 🚀 Installation
 
-| Backend  | Node.js (Express), Python (ML) |
+## Prerequisites
 
-| Mobile   | React Native, Expo |
+- Node.js
+- Python 3.x
+- MongoDB
+- Arduino IDE
+- Expo CLI
 
-| Database | MongoDB |
+### Backend Setup
 
----
+```bash
+cd backend-node
 
-## ⚙️ How It Works
+npm install
 
-1. Sensors capture temperature, heart rate, SpO₂, and GSR  
-
-2. ESP32 sends data to backend via WiFi  
-
-3. Backend processes data and applies ML prediction  
-
-4. Data stored in MongoDB  
-
-5. Mobile app displays patient status in real time  
-
----
-
-## 🧪 Setup
-
-- Backend: `npm install && npm start`  
-
-- Mobile: `npm install && npx expo start`  
-
-- ESP32: Upload firmware and configure WiFi  
-
----
-
-## 📡 API
-
-### POST `/api/data`
-
-```json
-
-{
-
-  "id": "P0009",
-
-  "deviceId": "ESP32_TEST",
-
-  "temperature": 36.7,
-
-  "heartRate": 82,
-
-  "spo2": 99,
-
-  "gsr": 1200
-
-}
-
+npm start
 ```
 
-## 📊 Status Levels
+### Mobile App Setup
 
-Normal — Safe range
+```bash
+cd mobile-app
 
-Moderate — Slight deviation
+npm install
 
-High — Concerning
+npx expo start
+```
 
-Critical — Immediate attention required
+### ESP32 Firmware
 
+- Open the firmware project in Arduino IDE
+- Configure WiFi credentials
+- Upload the firmware to the ESP32 board
+
+---
+
+# 🚀 Future Work
+
+- Integration with cloud platforms (AWS/Azure)
+- Doctor and caregiver web dashboard
+- Push notifications and SMS alerts
+- ECG and Blood Pressure sensor support
+- Historical health trend visualization
+- AI-based anomaly detection
+- Multi-patient monitoring
+- Electronic Health Record (EHR) integration
+- Voice assistant support
+- Wearable battery optimization
