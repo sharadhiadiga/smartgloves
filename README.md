@@ -67,33 +67,94 @@ The Smart Gloves Health Monitoring System is designed to provide continuous pati
 - MongoDB
 - Arduino IDE
 - Expo CLI
+- Git
 
-### Backend Setup
+### Clone the Repository
+
+```bash
+git clone https://github.com/sharadhiadiga/smartgloves.git
+
+cd smartgloves
+```
+
+---
+
+## Backend Setup
+
+Navigate to the backend directory:
 
 ```bash
 cd backend-node
+```
 
+Install the required dependencies:
+
+```bash
 npm install
+```
 
+Start the backend server:
+
+```bash
 npm start
 ```
 
-### Mobile App Setup
+If using the ML prediction service, install the required Python dependencies and run the Python server as specified in the backend configuration.
+
+---
+
+## Mobile Application Setup
+
+Open a new terminal and navigate to the mobile application:
 
 ```bash
 cd mobile-app
+```
 
+Install dependencies:
+
+```bash
 npm install
+```
 
+Start the Expo development server:
+
+```bash
 npx expo start
 ```
 
-### ESP32 Firmware
+Scan the QR code using the Expo Go app or run the application on an Android emulator or iOS simulator.
 
-- Open the firmware project in Arduino IDE
-- Configure WiFi credentials
-- Upload the firmware to the ESP32 board
+---
 
+## ESP32 Firmware Setup
+
+Navigate to:
+
+```text
+firmware/esp32_wifi_health_glove/
+```
+
+1. Open the project in **Arduino IDE**.
+2. Configure your WiFi credentials.
+3. Select the ESP32 board and the appropriate COM port.
+4. Upload the firmware to the ESP32 device.
+
+---
+
+## Database Setup
+
+1. Install and start **MongoDB**.
+2. Configure the MongoDB connection string in the backend configuration.
+3. Start the backend server to begin storing incoming sensor data.
+
+---
+
+## Access the Application
+
+- Backend API: Runs on the configured Express server.
+- Mobile App: Launch using **Expo Go** or an emulator after running `npx expo start`.
+- ESP32: Begins transmitting sensor data to the backend over WiFi once connected.
 ---
 
 # 🚀 Future Work
